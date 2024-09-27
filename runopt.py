@@ -6,7 +6,23 @@ from optimizer import *
 ##### example ####
 #### python3 runopt.py 3 1000 1200 805
 
+
 opt = Optimizer.opt2221()
+
+pvfile = open("pvdata.txt", "w")
+pv = " ".join(str(x) for x in opt.pv)
+pvfile.write(pv)
+pvfile.close()
+batteryfile = open("batterydata.txt", "w")
+battery = " ".join(str(x) for x in opt.battery)
+batteryfile.write(battery)
+batteryfile.close()
+consfile = open("consdata.txt", "w")
+cons = " ".join(str(x) for x in opt.battery)
+consfile.write(cons)
+consfile.close()
+
+
 indexlist = []
 groupsize = int(sys.argv[1])
 

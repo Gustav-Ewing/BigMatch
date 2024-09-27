@@ -1,7 +1,8 @@
 
 
 .idea
-_pychache_
+__pycache__
+*.txt
 bin
 statistics
 *.out
