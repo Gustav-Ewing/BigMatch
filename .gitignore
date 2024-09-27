@@ -1,0 +1,10 @@
+
+
+.idea
+_pychache_
+bin
+statistics
+*.out
+*.sh
+*.py
+!runopt.py
