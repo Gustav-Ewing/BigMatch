@@ -22,7 +22,11 @@ struct
 
 int main() {
 	//this currently both optimizes index 1 and extracts the pv, battery and cons values to the files
-    int results = system("python3 runopt.py 1 1");
+	if (system("python3 runopt.py 1 1"))
+	{
+		cout << "Failed to run optimizer" << endl;
+		return EXIT_FAILURE;
+	}
 	
 	//could probably generalize the following more but not sure how much of this stays
 	cout << "\n";
