@@ -9,3 +9,4 @@ statistics
 *.sh
 *.py
 !runopt.py
+!preprocess.py

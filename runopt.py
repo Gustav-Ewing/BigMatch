@@ -9,22 +9,6 @@ from optimizer import *
 
 opt = Optimizer.opt2221()
 
-pvfile = open("pvdata.txt", "w")
-pv = " ".join(str(x) for x in opt.pv)
-pvfile.write(pv)
-pvfile.close()
-batteryfile = open("batterydata.txt", "w")
-battery = " ".join(str(x) for x in opt.battery)
-batteryfile.write(battery)
-batteryfile.close()
-consfile = open("consdata.txt", "w")
-
-##### The file generated from the following is huge so it's ignored
-##### cons = " ".join(str(x) for x in opt.cons)
-##### consfile.write(cons)
-##### consfile.close()
-##### print(cons)
-
 
 indexlist = []
 groupsize = int(sys.argv[1])
@@ -38,7 +22,11 @@ totalcost = opt.subset(indexlist).optimize_all()
 
 savings = totalcost - groupcost
 
+weightfile = open("weight.txt", "w")
+weightfile.write(str(savings))
+weightfile.close()
 
-print("Aggregate all cost: ", groupcost)
-print("Optimize all cost: ", totalcost)
-print("Cost savings: ", savings)
+
+## print("Aggregate all cost: ", groupcost)
+## print("Optimize all cost: ", totalcost)
+## print("Cost savings: ", savings)
