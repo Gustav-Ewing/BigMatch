@@ -18,9 +18,12 @@ battery = " ".join(str(x) for x in opt.battery)
 batteryfile.write(battery)
 batteryfile.close()
 consfile = open("consdata.txt", "w")
-cons = " ".join(str(x) for x in opt.battery)
-consfile.write(cons)
-consfile.close()
+
+##### The file generated from the following is huge so it's ignored
+##### cons = " ".join(str(x) for x in opt.cons)
+##### consfile.write(cons)
+##### consfile.close()
+##### print(cons)
 
 
 indexlist = []
