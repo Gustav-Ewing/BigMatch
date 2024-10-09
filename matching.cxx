@@ -72,8 +72,8 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		myData.l = stod(argv[2]);
 		myData.procheck = stod(argv[1]);
+		myData.l = stod(argv[2]);
 	}
 
 	// These 2 lines just allow the interpreter to access python files in the current directory
@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
 	preprocess(false);
 	greedyMatching();
 
-	for (int i = 0; i < myData.procheck; i++)
+	for (int i = 0; i < datasetSize; i++)
 	{
 		if (myData.prosumers[i] == NULL)
 		{
@@ -153,7 +153,7 @@ int greedyMatching()
 {
 
 	// change the i<value to make it run faster when debugging
-	for (int i = 0; i < 10; i++)
+	for (int i = 0; i < myData.procheck; i++)
 	{
 		if (myData.prosumers[i] == NULL)
 		{
