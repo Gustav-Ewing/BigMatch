@@ -49,6 +49,7 @@ struct
 	int neighbors[datasetSize];
 	int neighborCount;
 	int l;
+	int procheck;
 } myData;
 
 PyObject *pName, *pModule, *pFunc;
@@ -58,14 +59,21 @@ int main(int argc, char *argv[])
 {
 	time_t t1 = time(NULL);
 	Py_Initialize();
-	if (argc < 2)
+	if (argc < 3)
 	{
 		myData.l = datasetSize;
 		cout << "l value not specified so no cap implemented" << endl;
 	}
+	else if(argc < 2){
+		myData.l = datasetSize;
+		myData.procheck = datasetSize;
+		cout << "i value not specified defaulting" << endl;
+		cout << "l value not specified so no cap implemented" << endl;
+	}
 	else
 	{
-		myData.l = stod(argv[1]);
+		myData.l = stod(argv[2]);
+		myData.procheck = stod(argv[1]);
 	}
 
 	// These 2 lines just allow the interpreter to access python files in the current directory
@@ -99,7 +107,7 @@ int main(int argc, char *argv[])
 	preprocess(false);
 	greedyMatching();
 
-	for (int i = 0; i < datasetSize; i++)
+	for (int i = 0; i < myData.procheck; i++)
 	{
 		if (myData.prosumers[i] == NULL)
 		{
@@ -164,8 +172,7 @@ int greedyMatching()
 		for(int j=0; j<myData.neighborCount; j++){
 			cout << myData.neighbors[j] << endl;
 		}
-		cout << "\n" << endl;
-		cout << "\n" << endl;
+		cout << "\n\n" << endl;
 		continue;
 		*/
 

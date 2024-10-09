@@ -1,0 +1,83 @@
+
+	these first 2 were ran with i=10 and j=100
+	which results in prosumer 0 and 5 executing fully
+
+system call approach:
+	time taken: 8:30min
+	
+embeeded python without neighborhoods:
+	time taken: 7:30min
+	
+	
+	ran with i=10 and evaluating the whole neighborhood with range 40000
+	this results in a neighborhood of 181 for 0 and 70 for 5
+embeeded python with neighborhoods:
+	
+	This looks good to me since we go from 200 calls to 251 calls and while these calls are cheaper it seems to show that the overhead is smaller than before
+	no l so all neighbors checked
+	time taken: 8:37min
+	saves:
+		10.356
+		26.1496
+		
+	l = 100
+	time taken: 6:35min
+	saves:
+		10.356
+		26.1496
+	
+	l = 50
+	time taken: 4:13min
+	saves:
+		10.356
+		25.4169
+		
+	l = 25
+	time taken: 2:09min
+	saves:
+		10.3556
+		25.4169
+		
+	l = 10
+	time taken: 0:55min
+	saves:
+		10.2741
+		13.5495	Big drop off here for the prosumer with a battery
+		
+		
+embeeded python with neighborhoods and persistent opt object:
+	
+	no l so all neighbors checked
+	time taken: 3:16min
+	saves:
+		10.356
+		26.1496
+	total: 36.505608
+		
+	l = 100
+	time taken: 3:01min
+	saves:
+		10.356
+		26.1496
+	total: 36.505608
+	
+	l = 50
+	time taken: 2:30min
+	saves:
+		10.356
+		26.1496
+	total: 36.505608
+		
+	l = 25
+	time taken: 1:17min
+	saves:
+		10.3556
+		25.4169
+	total: 35.772509
+		
+	l = 10
+	time taken: 0:32min
+	saves:
+		10.2741
+		18.2791
+	total: 28.553169
