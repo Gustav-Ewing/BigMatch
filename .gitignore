@@ -1,5 +1,6 @@
 
-
+test
+build/*
 .idea
 __pycache__
 *.txt
@@ -10,3 +11,6 @@ statistics
 *.py
 !runopt.py
 !preprocess.py
+!neighborhood.py
+!readme.txt
+!CMakeLists.txt

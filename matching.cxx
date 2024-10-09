@@ -21,6 +21,8 @@
 
 using namespace std;
 
+#include <chrono>
+#include <ctime>
 
 PyObject *makelist(int array[], size_t size);
 int readFile(string path, int type);
@@ -36,6 +38,7 @@ typedef struct
 	float	battery;
 	float	cons;
 	int		matchedToIndex;
+	float	saved;
 }*Prosumer;
 
 struct 
@@ -48,13 +51,22 @@ struct
 	float 	currentWeight;
 	int		neighbors[datasetSize];
 	int		neighborCount;
+	int		l;
 } myData;
 
 PyObject *pName, *pModule, *pFunc;
 PyObject *pArgs, *pValue;
 
 int main(int argc, char *argv[]) {
+	time_t t1 =  time(NULL);
     Py_Initialize();
+	if(argc < 2){
+		myData.l = datasetSize;
+		cout << "l value not specified so no cap implemented" << endl;
+	}
+	else{	
+		myData.l = stod(argv[1]);
+	}
 	
 	//These 2 lines just allow the interpreter to access python files in the current directory
 	//this means that the shell running the process has to be in python/ even if the executable is in another e.g. python/build/
@@ -77,12 +89,25 @@ int main(int argc, char *argv[]) {
 				break;
 			}
 		}
-		cout << "Prosumer " << i << "is matched to consumer " << myData.prosumers[i]->matchedToIndex << endl;
+		cout << "Prosumer " << i << "is matched to consumer " << myData.prosumers[i]->matchedToIndex << " which saves " << myData.prosumers[i]->saved << endl;
 	}
 	
 	if (Py_FinalizeEx() < 0) {
         return 120;
     }
+	time_t t2 =  time(NULL);
+	double diff = difftime(t2,t1);
+	printf ("%.f seconds since start of exection.\n", diff);
+	
+	double sum = 0;
+	for(int i=0; i<datasetSize; i++){
+		if(myData.prosumers[i]->matchedToIndex == -1){
+			continue;
+		}
+		sum = sum + myData.prosumers[i]->saved;
+	}
+	
+	printf ("%.f saved in total across all pairs.\n", sum);
 	
     return EXIT_SUCCESS;
 }
@@ -90,7 +115,7 @@ int main(int argc, char *argv[]) {
 int greedyMatching(){
 	
 	// change the i<value to make it run faster when debugging
-	for(int i=0; i<10; i++){
+	for(int i=0; i<datasetSize; i++){
 		if(myData.prosumers[i] == NULL){
 			continue;
 		}
@@ -114,37 +139,50 @@ int greedyMatching(){
 		continue;
 		*/
 		
+		//makes sure l doesn't account for unavailable neighbors
+		int count = 0;
 		//when empty it simply makes no match which is equivalent to having no neighbors
-		for(int j=0; j<myData.neighborCount; j++){
+		for(int j=0; j<myData.neighborCount && j<(myData.l+count); j++){
 			//checking if edge j in the neighborhood is available
 			
 			/*
-			something segfaults without either of prints surronding the following if statement
-			changing to
-			cout << "Current weight is: "<< myData.currentWeight << endl;
-			from
-			cout << "Current weight is: "<< myData.currentWeight << "\n";
-			seems to reslove the issue which is weird because it wasn't there before
+			Found the segfault that arises somewhere in here with gdb
+			Thread 1 "Matching" received signal SIGSEGV, Segmentation fault.
+			0x00007ffff7e157ea in tupledealloc.lto_priv () from /home/sven/anaconda3/envs/py37/lib/libpython3.7m.so.1.0
+			not sure exactly what causes it but something goes wrong when deallocating a tuple
+			
+			here is the backtrace so the pythonOptimizer(runopt, runOptimize, 2, list); call below is the cause
+			(gdb) backtrace
+			#0  0x00007ffff7e157ea in tupledealloc.lto_priv () from /home/sven/anaconda3/envs/py37/lib/libpython3.7m.so.1.0
+			#1  0x0000555555557837 in pythonOptimizer(char*, char*, int, int*) ()
+			#2  0x0000555555557d32 in greedyMatching() ()
+			#3  0x00005555555572a8 in main ()
+			
+			might not neceseraly be a bug could be due to lack of memory so will change some settings and try rerunning it
+			
 			*/
-			//cout << "before" << endl;
+			
 			if(!myData.availableConsumers[myData.neighbors[j]]){
+				//this can count prosumers which could lead to weird behavior so should be refined further
+				count++;
 				continue;
 			}
-			//cout << "after" << endl;
 			
 			int list[2] = {i,j};
 			pythonOptimizer(runopt, runOptimize, 2, list);
-			cout << "Current weight is: "<< myData.currentWeight << endl;
+			//cout << "Current weight is: "<< myData.currentWeight << endl;
 			if(currentBestWeight<myData.currentWeight){
 				currentBestWeight = myData.currentWeight;
-				currentBestIndex  = j;
+				currentBestIndex  = myData.neighbors[j];
 			}
 		}
 		cout << "best index: " << currentBestIndex << "\nbest weight: " << currentBestWeight << endl;
 		
 		//matching the prosumer to its consumer and marking the consumer as unavailable
 		myData.prosumers[i]->matchedToIndex = currentBestIndex;
-		myData.availableConsumers[currentBestIndex] = false;	
+		myData.prosumers[i]->saved = currentBestWeight;
+		myData.availableConsumers[currentBestIndex] = false;
+		
 	}
 	return EXIT_SUCCESS;
 }
