@@ -62,6 +62,7 @@ int main(int argc, char *argv[])
 	if (argc < 3)
 	{
 		myData.l = datasetSize;
+		myData.procheck = stod(argv[1]);
 		cout << "l value not specified so no cap implemented" << endl;
 	}
 	else if(argc < 2){
