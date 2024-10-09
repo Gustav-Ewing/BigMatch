@@ -15,7 +15,7 @@ def runOptimize(groupsize, indexlist):
 
     #### the os chdir call moves the cwd from ../duvignau-adapt_code/python/build/ to ../duvignau-adapt_code/python/ so that the others modules work
     #### however this should cause issues if running the file from ../duvignau-adapt_code/python/ so should like an if check or something  
-    opt = Optimizer.opt2221()
+    #opt = Optimizer.opt2221()
 
     groupcost = opt.subset(indexlist).aggregate_all().optimize()
     totalcost = opt.subset(indexlist).optimize_all()
@@ -33,7 +33,8 @@ def runOptimize(groupsize, indexlist):
     return savings
 
 def loadOpt():
-    return Optimizer.opt2221()
+    global opt
+    opt = Optimizer.opt2221()
     
 
     
