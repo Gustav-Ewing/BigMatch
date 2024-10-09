@@ -10,9 +10,6 @@
 #define weightValue 3
 #define Range 40000
 
-
-//g++ throws a bunch of warnings over these 
-//but they don't cause any issues as far as I can tell
 #define runopt "runopt"
 #define runOptimize "runOptimize"
 #define neighborHood "neighborhood"
@@ -28,18 +25,18 @@ PyObject *makelist(int array[], size_t size);
 int readFile(string path, int type);
 int preprocess(bool printValues);
 int greedyMatching();
-int pythonOptimizer(char *name, char *function, int indexCount, int indexes[]);
-int pythonNeighborhood(char *name, char *function, int index, int range);
+int pythonOptimizer(const char *name, const char *function, int indexCount, int indexes[]);
+int pythonNeighborhood(const char *name, const char *function, int index, int range);
 
 
 typedef struct
 {
 	float	pv;
 	float	battery;
-	float	cons;
+	//float	cons;
 	int		matchedToIndex;
 	float	saved;
-}*Prosumer;
+}*Prosumer, AProsumer;
 
 struct 
 {
@@ -251,11 +248,12 @@ int preprocess(bool printValues){
 	for(int i=0; i<datasetSize; i++){
 		if(myData.pv[i]!=0 || myData.battery[i]!=0){
 			//initalizes a new pointer for every prosumer tuple
-			Prosumer prosumer = (Prosumer)malloc(sizeof(Prosumer));
+			AProsumer prosumer = {myData.pv[i], myData.battery[i], -1, -1};
+			/*(Prosumer)malloc(sizeof(Prosumer));
 			prosumer->pv = myData.pv[i];
 			prosumer->battery = myData.battery[i];
-			prosumer->matchedToIndex = -1;
-			myData.prosumers[i] = prosumer;
+			prosumer->matchedToIndex = -1;*/
+			myData.prosumers[i] = &prosumer;
 			
 			/* 	
 				The following makes a condensed array instead of a sparse array
@@ -347,7 +345,7 @@ int *makearr(PyObject *list, int* arr, int size) {
 }
 
 //calls the optimizer python function and returns the result
-int pythonOptimizer(char *name, char *function, int indexCount, int indexes[]){
+int pythonOptimizer(const char *name, const char *function, int indexCount, int indexes[]){
 	
 	pName = PyUnicode_DecodeFSDefault(name);
     /* Error checking of pName left out */
@@ -404,7 +402,7 @@ int pythonOptimizer(char *name, char *function, int indexCount, int indexes[]){
 //calls a python function that returns the neighborhood for a consumer/prosumer
 //the neighborhood is an unsorted array of indexes which is stored inside myData.neighbors
 //myData.neighbors only lazy deletes so only the first myData.neighborCount elements are actually valid at any time
-int pythonNeighborhood(char *name, char *function, int index, int range){
+int pythonNeighborhood(const char *name, const char *function, int index, int range){
 	
 	pName = PyUnicode_DecodeFSDefault(name);
     /* Error checking of pName left out */
