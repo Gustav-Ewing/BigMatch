@@ -28,21 +28,22 @@ int greedyMatching();
 int pythonOptimizer(const char *name, const char *function, int indexCount, int indexes[]);
 int pythonNeighborhood(const char *name, const char *function, int index, int range);
 
-typedef struct
+class Prosumer
 {
-	float pv;
-	float battery;
-	// float	cons;
-	int matchedToIndex;
-	float saved;
-} *Prosumer, AProsumer;
+	public:
+		float pv;
+		float battery;
+		// float	cons;
+		int matchedToIndex;
+		float saved;
+};
 
 struct
 {
 	float pv[datasetSize];
 	float battery[datasetSize];
 	float cons[datasetSize];
-	Prosumer prosumers[datasetSize];
+	Prosumer *prosumers[datasetSize];
 	bool availableConsumers[datasetSize];
 	float currentWeight;
 	int neighbors[datasetSize];
@@ -112,7 +113,7 @@ int main(int argc, char *argv[])
 				break;
 			}
 		}
-		cout << "Prosumer " << i << "is matched to consumer " << myData.prosumers[i]->matchedToIndex << " which saves " << myData.prosumers[i]->saved << endl;
+		cout << "Prosumer " << i << " is matched to consumer " << myData.prosumers[i]->matchedToIndex << " which saves " << myData.prosumers[i]->saved << endl;
 	}
 
 	if (Py_FinalizeEx() < 0)
@@ -126,14 +127,16 @@ int main(int argc, char *argv[])
 	double sum = 0;
 	for (int i = 0; i < datasetSize; i++)
 	{
-		if (myData.prosumers[i]->matchedToIndex == -1)
-		{
+		if (myData.prosumers[i] == NULL){
+			continue;
+		}
+		if (myData.prosumers[i]->matchedToIndex == -1){
 			continue;
 		}
 		sum = sum + myData.prosumers[i]->saved;
 	}
 
-	printf("%.f saved in total across all pairs.\n", sum);
+	printf("%.6f saved in total across all pairs.\n", sum);
 
 	return EXIT_SUCCESS;
 }
@@ -142,7 +145,7 @@ int greedyMatching()
 {
 
 	// change the i<value to make it run faster when debugging
-	for (int i = 0; i < datasetSize; i++)
+	for (int i = 0; i < 10; i++)
 	{
 		if (myData.prosumers[i] == NULL)
 		{
@@ -291,12 +294,12 @@ int preprocess(bool printValues)
 		if (myData.pv[i] != 0 || myData.battery[i] != 0)
 		{
 			// initalizes a new pointer for every prosumer tuple
-			AProsumer prosumer = {myData.pv[i], myData.battery[i], -1, -1};
+			Prosumer *prosumer = new Prosumer{myData.pv[i], myData.battery[i], -1, -1};
 			/*(Prosumer)malloc(sizeof(Prosumer));
 			prosumer->pv = myData.pv[i];
 			prosumer->battery = myData.battery[i];
 			prosumer->matchedToIndex = -1;*/
-			myData.prosumers[i] = &prosumer;
+			myData.prosumers[i] = prosumer;
 
 			/*
 				The following makes a condensed array instead of a sparse array
