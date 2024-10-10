@@ -134,7 +134,7 @@ int main(int argc, char *argv[])
 	}
 	time_t t2 = time(NULL);
 	double diff = difftime(t2, t1);
-	printf("\n\033[91m%.f\033[m seconds since start of exection.\n", diff);
+	printf("\n\033[91m%.f\033[m seconds since start of execution.\n", diff);
 
 	double sum = 0;
 	for (int i = 0; i < datasetSize; i++)
@@ -191,7 +191,9 @@ int greedyMatching()
 		for (int j = 0; j < myData.neighborCount && j < (myData.l + count); j++)
 		{
 
-			cout << "Checking neighbours " << "\033[94m" << j + 1 << "\033[m" << "/" << "\033[94m" << (myData.l + count) << "\t" << "\033[m" << loadingBar(float(j + 1) / float((myData.l + count))) << "\t\r" << flush;
+			int maxRounds = min((myData.l + count), myData.neighborCount);
+			cout
+				<< "Checking neighbours " << "\033[94m" << j + 1 << "\033[m" << "/" << "\033[94m" << maxRounds << "\t" << "\033[m" << loadingBar(float(j + 1) / float((maxRounds))) << "\t\r" << flush;
 			// checking if edge j in the neighborhood is available
 
 			/*
