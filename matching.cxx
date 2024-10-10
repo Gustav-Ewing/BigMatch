@@ -27,15 +27,16 @@ int preprocess(bool printValues);
 int greedyMatching();
 int pythonOptimizer(const char *name, const char *function, int indexCount, int indexes[]);
 int pythonNeighborhood(const char *name, const char *function, int index, int range);
+string loadingBar(float percent);
 
 class Prosumer
 {
-	public:
-		float pv;
-		float battery;
-		// float	cons;
-		int matchedToIndex;
-		float saved;
+public:
+	float pv;
+	float battery;
+	// float	cons;
+	int matchedToIndex;
+	float saved;
 };
 
 struct
@@ -65,7 +66,8 @@ int main(int argc, char *argv[])
 		myData.procheck = stod(argv[1]);
 		cout << "l value not specified so no cap implemented" << endl;
 	}
-	else if(argc < 2){
+	else if (argc < 2)
+	{
 		myData.l = datasetSize;
 		myData.procheck = datasetSize;
 		cout << "i value not specified defaulting" << endl;
@@ -122,7 +124,8 @@ int main(int argc, char *argv[])
 				break;
 			}
 		}
-		cout << "Prosumer " << i << " is matched to consumer " << myData.prosumers[i]->matchedToIndex << " which saves " << myData.prosumers[i]->saved << endl;
+		cout << endl
+			 << "Prosumer " << "\033[94m" << i << "\033[m" << " is matched to consumer " << "\033[94m" << myData.prosumers[i]->matchedToIndex << "\033[m" << " which saves " << "\033[92m" << myData.prosumers[i]->saved << "\033[m" << endl;
 	}
 
 	if (Py_FinalizeEx() < 0)
@@ -131,21 +134,23 @@ int main(int argc, char *argv[])
 	}
 	time_t t2 = time(NULL);
 	double diff = difftime(t2, t1);
-	printf("%.f seconds since start of exection.\n", diff);
+	printf("\n\033[91m%.f\033[m seconds since start of execution.\n", diff);
 
 	double sum = 0;
 	for (int i = 0; i < datasetSize; i++)
 	{
-		if (myData.prosumers[i] == NULL){
+		if (myData.prosumers[i] == NULL)
+		{
 			continue;
 		}
-		if (myData.prosumers[i]->matchedToIndex == -1){
+		if (myData.prosumers[i]->matchedToIndex == -1)
+		{
 			continue;
 		}
 		sum = sum + myData.prosumers[i]->saved;
 	}
 
-	printf("%.6f saved in total across all pairs.\n", sum);
+	printf("\n\033[92m%.6f\033[m saved in total across all pairs.\n", sum);
 
 	return EXIT_SUCCESS;
 }
@@ -160,6 +165,9 @@ int greedyMatching()
 		{
 			continue;
 		}
+
+		cout << endl
+			 << "******* Prosumer " << "\033[94m" << i << "\033[m" << "/" << "\033[94m" << myData.procheck << "\033[m" << " *******" << endl;
 
 		// finds the neighborhood via a python function see below for indepth
 		pythonNeighborhood(neighborHood, findNeighborhood, i, Range);
@@ -182,6 +190,10 @@ int greedyMatching()
 		// when empty it simply makes no match which is equivalent to having no neighbors
 		for (int j = 0; j < myData.neighborCount && j < (myData.l + count); j++)
 		{
+
+			int maxRounds = min((myData.l + count), myData.neighborCount);
+			cout
+				<< "Checking neighbours " << "\033[94m" << j + 1 << "\033[m" << "/" << "\033[94m" << maxRounds << "\t" << "\033[m" << loadingBar(float(j + 1) / float((maxRounds))) << "\t\r" << flush;
 			// checking if edge j in the neighborhood is available
 
 			/*
@@ -217,7 +229,8 @@ int greedyMatching()
 				currentBestIndex = myData.neighbors[j];
 			}
 		}
-		cout << "best index: " << currentBestIndex << "\nbest weight: " << currentBestWeight << endl;
+		cout << endl
+			 << "best index: " << "\033[92m" << currentBestIndex << "\033[m" << "\nbest weight: " << "\033[92m" << currentBestWeight << "\033[m" << endl;
 
 		// matching the prosumer to its consumer and marking the consumer as unavailable
 		myData.prosumers[i]->matchedToIndex = currentBestIndex;
@@ -544,4 +557,24 @@ int pythonNeighborhood(const char *name, const char *function, int index, int ra
 		fprintf(stderr, "Failed to load \"%s\"\n", name);
 		return EXIT_FAILURE;
 	}
+}
+
+string loadingBar(float percent)
+{
+	string bar = "\033[92m";
+	int barWidth = 70;
+
+	bar += "[";
+	int pos = barWidth * percent;
+	for (int i = 0; i < barWidth; ++i)
+	{
+		if (i < pos)
+			bar += "=";
+		else if (i == pos)
+			bar += ">";
+		else
+			bar += " ";
+	}
+	bar = bar + "] " + "\033[m" + to_string(int(percent * 100.0)) + "%";
+	return bar;
 }
