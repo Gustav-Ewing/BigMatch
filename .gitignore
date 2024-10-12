@@ -15,3 +15,4 @@ statistics
 !readme.txt
 !CMakeLists.txt
 !performance.txt
+.vscode/c_cpp_properties.json

@@ -18,8 +18,23 @@
 
 using namespace std;
 
+#include <vector>
+#include <utility>
 #include <chrono>
 #include <ctime>
+
+
+struct Edge {
+    int source;
+    int destination;
+    double weight;
+    // Constructor for easy initialization
+    Edge(int src, int dest, double w) : source(src), destination(dest), weight(w) {}
+};
+
+typedef struct{
+    std::vector<Edge> graph;  // Simple version of a graph
+} uGraph;
 
 PyObject *makelist(int array[], size_t size);
 int readFile(string path, int type);
@@ -28,6 +43,9 @@ int greedyMatching();
 int pythonOptimizer(const char *name, const char *function, int indexCount, int indexes[]);
 int pythonNeighborhood(const char *name, const char *function, int index, int range);
 string loadingBar(float percent);
+int* doublegreedyMatching();
+std::pair<int, int> next_edge_greedy_path(int prosumer, uGraph& graph, int consumerSize, int prosumerSize, bool available[]);
+
 
 class Prosumer
 {
@@ -577,4 +595,154 @@ string loadingBar(float percent)
 	}
 	bar = bar + "] " + "\033[m" + to_string(int(percent * 100.0)) + "%";
 	return bar;
+}
+
+
+int* doublegreedyMatching(){
+	int wherewestopped=0;
+	bool available[datasetSize];
+	std::vector<int> prosumersList;
+	std::vector<int> consumersList;
+	for (int i = 0; i < datasetSize; i++) {
+        available[i] = true; // Initialize each element to true
+
+		if (myData.prosumers[i] != NULL) //if you are a prosumer
+		{
+			prosumersList.push_back(i); //add to vector, dynamic array
+		}
+		else{
+			consumersList.push_back(i);
+		}
+    }
+
+	int prosumerSize= prosumersList.size(); //equal to the amount of prosumers in vector prosumersList
+	int allmatching[prosumerSize*3];//needed for final step
+
+for (int j = 0; j < datasetSize; j++)
+{
+	int i = 0;
+	while (i < prosumerSize)
+	{
+		if (available[i])
+		{
+			  uGraph tempGraph;
+			  int o = 1;
+			while(o == 1){
+				 std::pair<int, int> result = next_edge_greedy_path(i, tempGraph, consumersList.size(), prosumersList.size(), available);
+				if(result.first != -1){
+					Edge addEdge = {prosumersList[i], result.first, result.second};
+					tempGraph.graph.push_back(addEdge);
+					i = result.first;
+				}
+				else{
+					o=0;
+				}
+			}
+			if(tempGraph.graph.size() == 0){
+				continue;
+			}
+			else{
+				 
+				
+				int i =wherewestopped;
+				int j =wherewestopped+1;
+				int k =wherewestopped+2;
+				for (const Edge& edge : tempGraph.graph) {
+
+					if (myData.prosumers[edge.source] == NULL) //if the source vertex is a consumer
+					{
+			
+					continue; //we skip, since we only want prosumer to consumer,  other, if we dont remove this we could get groups of size 3.
+					}
+		
+				allmatching[i]=edge.source;
+				allmatching[j]=edge.destination;
+				allmatching[k]=edge.weight;
+				i=i+3;
+				j=j+3;
+				k=k+3;
+
+				}
+				wherewestopped = i;
+
+				for (int i = wherewestopped; i < (wherewestopped+tempGraph.graph.size()); i+=3)
+				{
+					available[allmatching[i]] = false;
+					available[allmatching[i+1]] = false;
+				}
+				
+
+			}
+		}
+		i++;
+	}
+	
+	/* code arr.push_back(std::make_tuple(1, 3.14, "Hello")); // First tuple */
+}
+	return allmatching;
+}
+
+
+std::pair<int, int> next_edge_greedy_path(int household, uGraph& tempgraph, int consumersize, int prosumersize, bool available[]) {
+   
+   int k;
+   if(myData.prosumers[household] == NULL){
+	k = consumersize;
+   }
+   else{
+	k = prosumersize;
+   }
+
+	pythonNeighborhood(neighborHood, findNeighborhood, household, Range);
+
+	std::vector<int> N; //vi kan möjligtvis begränsa längden av N genom att göra den l+1 lång array.
+	
+
+	for (int i = 0; i < myData.neighborCount; i++)
+	{
+		if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i]){
+			N.push_back(myData.neighbors[i]);
+		}
+	}
+	int j;
+	int weight = -1;
+	if(N.size() != 0){
+		if(N.size() > 1){
+			//l+1 search
+			for (int i = 0; i < N.size(); i++){
+			int list[2] = {household,  N[i]};
+			pythonOptimizer(runopt, runOptimize, 2, list);
+			// cout << "Current weight is: "<< myData.currentWeight << endl;
+			if (weight < myData.currentWeight)
+			{
+				weight = myData.currentWeight;
+				j = N[i];
+			}
+			}
+		}
+		else{
+			j = N[0];
+		}	
+	}
+	else{
+		j = -1;
+	}
+
+
+    return std::make_pair(j, weight); 
+}
+
+// Function to check if a household can create a new edge with a target household
+bool canCreateNewEdge(const uGraph& tempGraph, int householdId, int targetHouseholdId) {
+    // Check if the current household is a source
+    for (const Edge& edge : tempGraph.graph) {
+        if (edge.source == householdId) {
+            return false; // Current household is a source
+        }
+		 if (edge.source == targetHouseholdId) {
+            return false; // Target household is a source
+        }
+    }
+    // If both checks pass, return true
+    return true;
 }
