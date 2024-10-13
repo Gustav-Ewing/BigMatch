@@ -43,8 +43,9 @@ int greedyMatching();
 int pythonOptimizer(const char *name, const char *function, int indexCount, int indexes[]);
 int pythonNeighborhood(const char *name, const char *function, int index, int range);
 string loadingBar(float percent);
-int* doublegreedyMatching();
-std::pair<int, int> next_edge_greedy_path(int prosumer, uGraph& graph, int consumerSize, int prosumerSize, bool available[]);
+float* doublegreedyMatching();
+std::pair<int, float> next_edge_greedy_path(int prosumer, uGraph& graph, int consumerSize, int prosumerSize, bool available[]);
+bool canCreateNewEdge(const uGraph& tempGraph, int householdId, int targetHouseholdId);
 
 
 class Prosumer
@@ -127,6 +128,14 @@ int main(int argc, char *argv[])
 
 	preprocess(false);
 	greedyMatching();
+	
+	
+	/*
+		double greedy debug
+	float *result = doublegreedyMatching();
+	cout << int(result[0]) << " " << int(result[1]) << " " << result[2] << endl;
+	cout << int(result[3]) << " " << int(result[4]) << " " << result[5] << endl;
+	*/
 
 	for (int i = 0; i < datasetSize; i++)
 	{
@@ -598,7 +607,7 @@ string loadingBar(float percent)
 }
 
 
-int* doublegreedyMatching(){
+float* doublegreedyMatching(){
 	int wherewestopped=0;
 	bool available[datasetSize];
 	std::vector<int> prosumersList;
@@ -614,10 +623,8 @@ int* doublegreedyMatching(){
 			consumersList.push_back(i);
 		}
     }
-
-	int prosumerSize= prosumersList.size(); //equal to the amount of prosumers in vector prosumersList
-	int allmatching[prosumerSize*3];//needed for final step
-
+	int prosumerSize = prosumersList.size(); //equal to the amount of prosumers in vector prosumersList
+	float *allmatching = new float[prosumerSize*3];//needed for final step
 for (int j = 0; j < datasetSize; j++)
 {
 	int i = 0;
@@ -628,7 +635,7 @@ for (int j = 0; j < datasetSize; j++)
 			  uGraph tempGraph;
 			  int o = 1;
 			while(o == 1){
-				 std::pair<int, int> result = next_edge_greedy_path(i, tempGraph, consumersList.size(), prosumersList.size(), available);
+				 std::pair<int, float> result = next_edge_greedy_path(i, tempGraph, consumersList.size(), prosumersList.size(), available);
 				if(result.first != -1){
 					Edge addEdge = {prosumersList[i], result.first, result.second};
 					tempGraph.graph.push_back(addEdge);
@@ -667,8 +674,8 @@ for (int j = 0; j < datasetSize; j++)
 
 				for (int i = wherewestopped; i < (wherewestopped+tempGraph.graph.size()); i+=3)
 				{
-					available[allmatching[i]] = false;
-					available[allmatching[i+1]] = false;
+					available[int(allmatching[i])] = false;
+					available[int(allmatching[i+1])] = false;
 				}
 				
 
@@ -676,14 +683,13 @@ for (int j = 0; j < datasetSize; j++)
 		}
 		i++;
 	}
-	
 	/* code arr.push_back(std::make_tuple(1, 3.14, "Hello")); // First tuple */
 }
 	return allmatching;
 }
 
 
-std::pair<int, int> next_edge_greedy_path(int household, uGraph& tempgraph, int consumersize, int prosumersize, bool available[]) {
+std::pair<int, float> next_edge_greedy_path(int household, uGraph& tempgraph, int consumersize, int prosumersize, bool available[]) {
    
    int k;
    if(myData.prosumers[household] == NULL){
@@ -705,7 +711,7 @@ std::pair<int, int> next_edge_greedy_path(int household, uGraph& tempgraph, int 
 		}
 	}
 	int j;
-	int weight = -1;
+	float weight = -1;
 	if(N.size() != 0){
 		if(N.size() > 1){
 			//l+1 search
