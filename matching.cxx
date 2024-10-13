@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
 	if (argc < 3)
 	{
 		myData.l = datasetSize;
-		myData.procheck = stod(argv[1]);
+		myData.procheck = stoi(argv[1]);
 		cout << "l value not specified so no cap implemented" << endl;
 	}
 	else if (argc < 2)
@@ -94,8 +94,8 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		myData.procheck = stod(argv[1]);
-		myData.l = stod(argv[2]);
+		myData.procheck = stoi(argv[1]);
+		myData.l = stoi(argv[2]);
 	}
 
 	// These 2 lines just allow the interpreter to access python files in the current directory
@@ -447,11 +447,11 @@ PyObject *makelist(int array[], int size)
 	return l;
 }
 
-int *makearr(PyObject *list, int *arr, int size)
+int *makearr(PyObject *list)
 {
-	for (int i = 0; i < size; ++i)
+	for (int i = 0; i < myData.neighborCount; ++i)
 	{
-		arr[i] = PyLong_AsLong(PyList_GetItem(list, i));
+		myData.neighbors[i] = PyLong_AsLong(PyList_GetItem(list, i));
 	}
 	return EXIT_SUCCESS;
 }
@@ -485,7 +485,6 @@ int pythonOptimizer(const char *name, const char *function, int indexCount, int 
 
 			if (pValue != NULL)
 			{
-				// I think PyFloat_AsDouble reduces us to a double from a long double so we are losing accuracy here but it shouldn't really matter at all
 				// printf("Result of call: %f\n", PyFloat_AsDouble(pValue));
 				myData.currentWeight = PyFloat_AsDouble(pValue);
 				Py_DECREF(pValue);
@@ -545,16 +544,9 @@ int pythonNeighborhood(const char *name, const char *function, int index, int ra
 
 			if (pValue != NULL)
 			{
-				int size = PyList_Size(pValue);
-				int array[size];
-				makearr(pValue, array, size);
-
-				// saving the data to permanent variables
-				myData.neighborCount = size;
-				for (int i = 0; i < size; ++i)
-				{
-					myData.neighbors[i] = array[i];
-				}
+				// saving the data to global variables
+				myData.neighborCount = PyList_Size(pValue);	
+				makearr(pValue);
 
 				// GC
 				Py_DECREF(pValue);
