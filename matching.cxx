@@ -631,8 +631,8 @@ std::vector<std::tuple<int, int, double>>  doublegreedyMatching(std::vector<int>
     std::cout << "Size (using std::size_t): " << size1 << std::endl;
 
 
-	int i = 0;
-	while (i < prosumerSize)
+	
+	for(int i = 0;i < prosumerSize; i++)
 	{
 		int k = 0;
 		int household;
@@ -656,27 +656,26 @@ std::vector<std::tuple<int, int, double>>  doublegreedyMatching(std::vector<int>
 					o=0;
 				}
 			}
-			if(tempGraph.graph.size() == 0){
+			if(int(tempGraph.graph.size()) == 0){
 				continue;
 			}
 			else{
 				for (const Edge& edge : tempGraph.graph) {
-
+					
 					if (myData.prosumers[edge.source] == NULL) //if the source vertex is a consumer
 					{
 			
 					continue; //we skip, since we only want prosumer to consumer,  other, if we dont remove this we could get groups of size 3.
 					}
 		
-				allmatchings.push_back(std::make_tuple(edge.source, edge.destination, edge.weight));
 					available[edge.source] = false;
 					available[edge.destination] = false;
+				allmatchings.push_back(std::make_tuple(edge.source, edge.destination, edge.weight));
 				}
 				
 
 			}
 		}
-		i++;
 	}
 	/* code arr.push_back(std::make_tuple(1, 3.14, "Hello")); // First tuple */
 
@@ -692,17 +691,34 @@ std::pair<int, float> next_edge_greedy_path(int household, uGraph& tempgraph, in
 
 	std::vector<int> N; //vi kan möjligtvis begränsa längden av N genom att göra den l+1 lång array.
 	
-
-	for (int i = 0; i < myData.l+1; i++)
+	int count = 0;
+	if(myData.l + 1 < myData.neighborCount && myData.prosumers[household] != NULL){
+	for (int i = 0; i < myData.l+1+count; i++)
 	{
-		if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i]){
+		if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] == NULL){
 			N.push_back(myData.neighbors[i]);
 		}
+		
+		if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] != NULL){
+			count++;
+		}
 	}
+	}else if(myData.l + 1 > myData.neighborCount && myData.prosumers[household] != NULL){
+		for (int i = 0; i < myData.neighborCount+count; i++)
+	{
+		if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] == NULL){
+			N.push_back(myData.neighbors[i]);
+		}
+		if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] != NULL){
+			count++;
+		}
+	}
+	}
+
 	int j;
 	float weight = -1;
-	if(N.size() != 0){
-		if(N.size() > 1){
+	if(int(N.size()) != 0){
+		if(int(N.size()) > 1){
 			//l+1 search
 			for (int i = 0; i < int(N.size()); i++){
 			int list[2] = {household,  N[i]};
