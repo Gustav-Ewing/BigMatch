@@ -622,7 +622,15 @@ string loadingBar(float percent)
 std::vector<std::tuple<int, int, double>>  doublegreedyMatching(vector<int> prosumersList, vector<int> consumersList){
 
 
+
 	bool available[datasetSize];
+
+	for (int i = 0; i < datasetSize; i++)
+	{
+		
+		available[i] = true;
+		
+	}
 
 	int prosumerSize = int(prosumersList.size()); //equal to the amount of prosumers in vector prosumersList
 
@@ -631,13 +639,14 @@ std::vector<std::tuple<int, int, double>>  doublegreedyMatching(vector<int> pros
 	std::size_t size1 = prosumersList.size();
     std::cout << "Size (using std::size_t): " << size1 << std::endl;
 
-
 	
 	for(int i = 0;i < prosumerSize; i++)
 	{
 		int k = 0;
 		int household;
 		//cout << "do we enter?" << i << endl;
+
+		cout << "starting with prosumer " << prosumersList[i] << "which is" << available[prosumersList[i]] << endl;
 		if (available[prosumersList[i]])
 		{
 			//cout << "fail here?3" << endl;
@@ -670,11 +679,12 @@ std::vector<std::tuple<int, int, double>>  doublegreedyMatching(vector<int> pros
 					continue; //we skip, since we only want prosumer to consumer,  other, if we dont remove this we could get groups of size 3.
 					}
 		
-					available[prosumersList[edge.source]] = false;
-					available[consumersList[edge.destination]] = false;
+					
 
-					cout << "added a edge with origin " << prosumersList[i] << " to the graph" << endl;
+					cout << "added a edge with origin " << edge.source << " to the graph" << endl;
 					allmatchings.push_back(make_tuple(edge.source, edge.destination, edge.weight));
+					available[edge.source] = false;
+					available[edge.destination] = false;
 				}
 				
 
@@ -690,7 +700,7 @@ std::cout << "Size of result inside doublegreedyMatching: " << allmatchings.size
 
 std::pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, int prosumersize, bool available[]) {
 
-
+	cout << "we are checking household number " << household << endl; 
 	pythonNeighborhood(neighborHood, findNeighborhood, household, Range);
 
 	std::vector<int> N; //vi kan möjligtvis begränsa längden av N genom att göra den l+1 lång array.
@@ -787,6 +797,9 @@ if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] &
 		}
 		else{
 			j = N[0];
+			int list[2] = {household,  j};
+			pythonOptimizer(runopt, runOptimize, 2, list);
+			weight = myData.currentWeight;
 		}	
 	}
 	else{
@@ -812,10 +825,10 @@ if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] &
 bool canCreateNewEdge(const vector<Edge> *tempGraph, int householdId, int targetHouseholdId) {
     // Check if the current household is a source
     for (const Edge& edge : *tempGraph) {
-        if (edge.source == householdId) {
+        if (edge.source == targetHouseholdId) {
             return false; // Current household is a source
         }
-		 if (edge.source == targetHouseholdId) {
+		 if (edge.destination == targetHouseholdId) {
             return false; // Target household is a source
         }
     }
