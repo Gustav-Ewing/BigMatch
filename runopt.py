@@ -11,25 +11,13 @@ from optimizer import *
 ##### example ####
 #### python3 runopt.py 3 1000 1200 805
 
-def runOptimize(groupsize, indexlist):
-
-    #### the os chdir call moves the cwd from ../duvignau-adapt_code/python/build/ to ../duvignau-adapt_code/python/ so that the others modules work
-    #### however this should cause issues if running the file from ../duvignau-adapt_code/python/ so should like an if check or something  
-    #opt = Optimizer.opt2221()
+def runOptimize(groupSize, indexlist):
 
     groupcost = opt.subset(indexlist).aggregate_all().optimize()
     totalcost = opt.subset(indexlist).optimize_all()
 
     savings = totalcost - groupcost
 
-    #weightfile = open("weight.txt", "w")
-    #weightfile.write(str(savings))
-    #weightfile.close()
-
-
-    #print("Aggregate all cost: ", groupcost)
-    #print("Optimize all cost: ", totalcost)
-    #print("Cost savings: ", savings)
     return savings
 
 def loadOpt():

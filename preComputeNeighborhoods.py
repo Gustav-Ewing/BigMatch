@@ -1,10 +1,14 @@
 from utils import *
 
+def start():
+	global neighborhoods
+	neighborhoods = {}
+
 
 #### finds the neighborhoods of all prosumers and consumers based on a dictionary of edges
-def findNeighborhoods(fil, savefile):
-	global neighborhoods
-	costdict = loaddump(join("bin/costs/", fil))
+def findNeighborhoods(loadFile, saveFile):
+	#neighborhoods = {}
+	costdict = loaddump(join("bin/costs/", loadFile))
 	keys = costdict.keys()
 	prosumerNeighborhoods = {}
 
@@ -46,8 +50,10 @@ def findNeighborhoods(fil, savefile):
 	consumerList = list(consumersnNeighborhoods.keys())
 
 	#### merges the forward and reverse dictionaroes so that we can lookup both consumer and prosumers
-	neighborhoods =	prosumerNeighborhoods | consumersnNeighborhoods
-	savedump(neighborhoods, join("bin/dumps/",savefile))
+	# global neighborhoods
+	global neighborhoods
+	neighborhoods = prosumerNeighborhoods | consumersnNeighborhoods
+	savedump(neighborhoods, join("bin/dumps/", saveFile))
 
 	return prosumerList, consumerList
 
@@ -60,6 +66,9 @@ def precalculateNeighborhoods():
 		findNeighborhoods(f"costs{fil}.bin", f"dumps{fil}.bin")
 	return "finished dumping all precomputed neighborhoods to bin/dumps/"
 
+
+# this global isnt working so have to load it every time instead
 def findNeighborhood(sumer):
+	#neighborhoods = loaddump(join("bin/dumps/", "costs100.bin"))
 	return neighborhoods[sumer]
 
