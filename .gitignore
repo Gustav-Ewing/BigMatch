@@ -1,10 +1,9 @@
 
-test
+bin
 build/*
 .idea
 __pycache__
 *.txt
-bin
 statistics
 *.out
 *.sh
@@ -12,8 +11,7 @@ statistics
 !runopt.py
 !preprocess.py
 !neighborhood.py
+!costs.py
 !readme.txt
 !CMakeLists.txt
 !performance.txt
-.vscode/c_cpp_properties.json
-.vscode/settings.json

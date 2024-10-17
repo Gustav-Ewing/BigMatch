@@ -150,31 +150,12 @@ int main(int argc, char *argv[])
 		prosumersList.push_back(i);
 	}
 	result = doublegreedyMatching(prosumersList, consumersList);
-
-	string path = "test.txt";
-
-	ofstream file;
-
-	file.open(path);
-	if (!file.is_open())
-	{
-		cout << "error couldnt open output file\n";
-		return EXIT_FAILURE;
-	}
-	string tmp;
-
-
-
 	for (size_t i = 0; i < result.size(); i++)
     {
-
-        file << "First value: " << get<0>(result[i]) << endl;
-        file << "Second value: " << get<1>(result[i]) << endl;
-        file << "Third value: " << get<2>(result[i]) << endl;
+        std::cout << "First value: " << std::get<0>(result[i]) << std::endl;
+        std::cout << "Second value: " << std::get<1>(result[i]) << std::endl;
+        std::cout << "Third value: " << std::get<2>(result[i]) << std::endl;
     }
-
-    file.close();
-
 	
 	///*
 
@@ -204,8 +185,6 @@ int main(int argc, char *argv[])
 	time_t t2 = time(NULL);
 	double diff = difftime(t2, t1);
 	printf("\n\033[91m%.f\033[m seconds since start of execution.\n", diff);
-
-
 
 	double sum = 0;
 	for (int i = 0; i < datasetSize; i++)
@@ -758,15 +737,15 @@ std::pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgra
 		if(N.size() > size_t(1)){
 			//l+1 search
 			for (size_t i = 0; i < N.size(); i++){
-				int list[2] = {household,  N[i]};
-				pythonOptimizer(runopt, runOptimize, 2, list);
-				// cout << "Current weight is: "<< myData.currentWeight << endl;
-				//cout << "are we stuck auxillary? " << i << endl;
-				if (weight < myData.currentWeight)
-				{
-					weight = myData.currentWeight;
-					j = N[i];
-				}
+			int list[2] = {household,  N[i]};
+			pythonOptimizer(runopt, runOptimize, 2, list);
+			// cout << "Current weight is: "<< myData.currentWeight << endl;
+			//cout << "are we stuck auxillary? " << i << endl;
+			if (weight < myData.currentWeight)
+			{
+				weight = myData.currentWeight;
+				j = N[i];
+			}
 			}
 		}
 		else{
