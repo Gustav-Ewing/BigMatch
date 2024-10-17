@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
 		//double greedy debug
 	vector<int> prosumersList;
 	vector<int> consumersList;
-	vector<std::tuple<int, int, double>> result;
+	vector<tuple<int, int, double>> result;
 
 	for (int i = 0; i < myData.procheck; i++)
 	{
@@ -161,10 +161,9 @@ int main(int argc, char *argv[])
 		cout << "error couldnt open output file\n";
 		return EXIT_FAILURE;
 	}
-	string tmp;
 
 
-
+	cout << "size: " << result.size() << endl;
 	for (size_t i = 0; i < result.size(); i++)
     {
 

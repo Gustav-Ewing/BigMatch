@@ -11,7 +11,7 @@ statistics
 !runopt.py
 !preprocess.py
 !neighborhood.py
-!costs.py
+!preComputeNeighborhoods.py
 !readme.txt
 !CMakeLists.txt
 !performance.txt
