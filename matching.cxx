@@ -128,10 +128,10 @@ int main(int argc, char *argv[])
 	} /* End of initialization */
 
 	preprocess(false);
-	//greedyMatching();
+	greedyMatching();
 	
-	
-	
+	//				uncomment below to run double greedy
+	/*
 		//double greedy debug
 	vector<int> prosumersList;
 	vector<int> consumersList;
@@ -149,13 +149,14 @@ int main(int argc, char *argv[])
 	}
 	result = doublegreedyMatching(prosumersList, consumersList);
 	if (!result.empty()) {
-    std::cout << "First value: " << std::get<0>(result[0]) << std::endl;
-    std::cout << "Second value: " << std::get<1>(result[0]) << std::endl;
-    std::cout << "Third value: " << std::get<2>(result[0]) << std::endl;
-} else {
-    std::cout << "The result vector is empty!" << std::endl;
-}
+		std::cout << "First value: " << std::get<0>(result[0]) << std::endl;
+		std::cout << "Second value: " << std::get<1>(result[0]) << std::endl;
+		std::cout << "Third value: " << std::get<2>(result[0]) << std::endl;
+	} else {
+		std::cout << "The result vector is empty!" << std::endl;
+	}
 	
+	*/
 
 	for (int i = 0; i < datasetSize; i++)
 	{
@@ -205,8 +206,8 @@ int main(int argc, char *argv[])
 int greedyMatching()
 {
 
-	// change the i<value to make it run faster when debugging
-	for (int i = 0; i < myData.procheck; i++)
+	// loops backwards since high comsumptions are at high indicies
+	for (int i = myData.procheck - 1; i >= 0; i--)
 	{
 		if (myData.prosumers[i] == NULL)
 		{
@@ -235,7 +236,7 @@ int greedyMatching()
 		// makes sure l doesn't account for unavailable neighbors
 		int count = 0;
 		// when empty it simply makes no match which is equivalent to having no neighbors
-		for (int j = 0; j < myData.neighborCount && j < (myData.l + count); j++)
+		for (int j = 0; j < myData.neighborCount && j < myData.l + count; j++)
 		{
 
 			int maxRounds = min((myData.l + count), myData.neighborCount);
@@ -243,26 +244,8 @@ int greedyMatching()
 				<< "Checking neighbours " << "\033[94m" << j + 1 << "\033[m" << "/" << "\033[94m" << maxRounds << "\t" << "\033[m" << loadingBar(float(j + 1) / float((maxRounds))) << "\t\r" << flush;
 			// checking if edge j in the neighborhood is available
 
-			/*
-			Found the segfault that arises somewhere in here with gdb
-			Thread 1 "Matching" received signal SIGSEGV, Segmentation fault.
-			0x00007ffff7e157ea in tupledealloc.lto_priv () from /home/sven/anaconda3/envs/py37/lib/libpython3.7m.so.1.0
-			not sure exactly what causes it but something goes wrong when deallocating a tuple
-
-			here is the backtrace so the pythonOptimizer(runopt, runOptimize, 2, list); call below is the cause
-			(gdb) backtrace
-			#0  0x00007ffff7e157ea in tupledealloc.lto_priv () from /home/sven/anaconda3/envs/py37/lib/libpython3.7m.so.1.0
-			#1  0x0000555555557837 in pythonOptimizer(char*, char*, int, int*) ()
-			#2  0x0000555555557d32 in greedyMatching() ()
-			#3  0x00005555555572a8 in main ()
-
-			might not neceseraly be a bug could be due to lack of memory so will change some settings and try rerunning it
-
-			*/
-
-			if (!myData.availableConsumers[myData.neighbors[j]])
-			{
-				// this can count prosumers which could lead to weird behavior so should be refined further
+			if (!myData.availableConsumers[myData.neighbors[j]]){
+				// this counts prosumers too which means we always examine the entire neighborhood or l+1 available consumers depending on which of these values is smaller
 				count++;
 				continue;
 			}
@@ -467,7 +450,7 @@ PyObject *makelist(int array[], int size)
 	return l;
 }
 
-int *makearr(PyObject *list)
+int makearr(PyObject *list)
 {
 	for (int i = 0; i < myData.neighborCount; ++i)
 	{
@@ -680,7 +663,8 @@ std::vector<std::tuple<int, int, double>>  doublegreedyMatching(vector<int> pros
 					}
 		
 					
-
+					myData.prosumers[edge.source]->saved = edge.weight;
+					myData.prosumers[edge.source]->matchedToIndex = edge.destination;
 					cout << "added a edge with origin " << edge.source << " to the graph" << endl;
 					allmatchings.push_back(make_tuple(edge.source, edge.destination, edge.weight));
 					available[edge.source] = false;
@@ -705,72 +689,40 @@ std::pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgra
 
 	std::vector<int> N; //vi kan möjligtvis begränsa längden av N genom att göra den l+1 lång array.
 	
-	/*
-	 * if(myData.prosumers[household] != NULL){
-	 * int count = 0;
-	 * auto ceiling = myData.l+count;
-	 * if(myData.l > myData.neighborCount){
-	 *	ceiling = myData.neighborCount+count;
-	 *	for (int i = 0; i < ceiling; i++)
-	 *	{
-	 *		if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] == NULL){
-	 *			N.push_back(myData.neighbors[i]);
-}
-
-if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] != NULL){
-	count++;
-}
-}
-}
-}
-	 *
-	 * */
-
 	if(myData.prosumers[household] != NULL){
 		int count = 0;
-		if(myData.l < myData.neighborCount){// {
-			for (int i = 0; i < myData.l+count; i++)
-			{
-				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] == NULL){
-					N.push_back(myData.neighbors[i]);
+		for (int i = 0; i < myData.neighborCount && i < myData.l + count; i++)
+		{
+			if(!available[myData.neighbors[i]]){
+				count++;
+			}else{
+				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i])){
+					if(myData.prosumers[myData.neighbors[i]] == NULL){
+						N.push_back(myData.neighbors[i]);
+					}else{
+						count++;
+					}
+				}else{
+					count++;
 				}
 
-				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] != NULL){
-					count++;
-				}
-			}
-		}else if(myData.l > myData.neighborCount){
-			for (int i = 0; i < myData.neighborCount+count; i++)
-			{
-				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] == NULL){
-					N.push_back(myData.neighbors[i]);
-				}
-				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] != NULL){
-					count++;
-				}
 			}
 		}
 	}
 	else{
 		int count = 0;
-		if(myData.l < myData.neighborCount){
-			for (int i = 0; i < myData.l+count; i++)
-			{
-				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] != NULL){
-					N.push_back(myData.neighbors[i]);
-				}
-
-				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] == NULL){
-					count++;
-				}
-			}
-		}else if(myData.l > myData.neighborCount){
-			for (int i = 0; i < myData.neighborCount+count; i++)
-			{
-				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] != NULL){
-					N.push_back(myData.neighbors[i]);
-				}
-				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] && myData.prosumers[myData.neighbors[i]] == NULL){
+		for (int i = 0; i < myData.neighborCount && i < myData.l + count; i++)
+		{
+			if(!available[myData.neighbors[i]]){
+				count++;
+			}else{
+				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i])){
+					if(myData.prosumers[myData.neighbors[i]] != NULL){
+						N.push_back(myData.neighbors[i]);
+					}else{
+						count++;
+					}
+				}else{
 					count++;
 				}
 			}
@@ -809,16 +761,6 @@ if(canCreateNewEdge(tempgraph, household, myData.neighbors[i]) && available[i] &
 
     return std::make_pair(j, weight); 
 }
-
-// 0->7
-// 5->3
-// 10->3
-
-/*
- *
- *
- *
- */
 
 
 // Function to check if a household can create a new edge with a target household

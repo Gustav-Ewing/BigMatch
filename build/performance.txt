@@ -81,3 +81,24 @@ embeeded python with neighborhoods and persistent opt object:
 		10.2741
 		18.2791
 	total: 28.553169
+
+
+
+
+
+double greedy with l=0 so naive on the entire data set (i=2221) low to high
+	time taken: 13:31 min
+	total saving: 44808.763081
+
+
+normal greedy with l=0 so naive on the entire data set (i=2221) low to high
+	time taken: 07:24 min
+	total saving: 14931.785899
+
+
+normal greedy with l=0 so naive on the entire data set (i=2221) high to low
+	time taken: 07:15 min
+	total saving: 14369.802915
+
+
+
