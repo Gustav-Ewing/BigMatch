@@ -6,9 +6,9 @@ def start():
 
 
 #### finds the neighborhoods of all prosumers and consumers based on a dictionary of edges
-def findNeighborhoods(loadFile, saveFile):
+def findNeighborhoods(theFile):
 	#neighborhoods = {}
-	costdict = loaddump(join("bin/costs/", loadFile))
+	costdict = loaddump(join("bin/costs/", theFile))
 	keys = costdict.keys()
 	prosumerNeighborhoods = {}
 
@@ -53,7 +53,7 @@ def findNeighborhoods(loadFile, saveFile):
 	# global neighborhoods
 	global neighborhoods
 	neighborhoods = prosumerNeighborhoods | consumersnNeighborhoods
-	savedump(neighborhoods, join("bin/dumps/", saveFile))
+	savedump(neighborhoods, join("bin/dumps/", theFile))
 
 	return prosumerList, consumerList
 
@@ -67,7 +67,6 @@ def precalculateNeighborhoods():
 	return "finished dumping all precomputed neighborhoods to bin/dumps/"
 
 
-# this global isnt working so have to load it every time instead
 def findNeighborhood(sumer):
 	#neighborhoods = loaddump(join("bin/dumps/", "costs100.bin"))
 	return neighborhoods[sumer]

@@ -23,6 +23,4 @@ def runOptimize(groupSize, indexlist):
 def loadOpt():
     global opt
     opt = Optimizer.opt2221()
-    
 
-    

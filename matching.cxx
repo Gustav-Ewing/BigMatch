@@ -44,21 +44,21 @@ struct Edge {
 };
 
 typedef struct{
-    std::vector<Edge> graph;  // Simple version of a graph
+    vector<Edge> graph;  // Simple version of a graph
 } uGraph;
 
 
 int greedyMatching(vector<int> prosumersList, vector<int> consumersList);
 
 vector<tuple<int, int, double>> doublegreedyMatching(vector<int> prosumersList, vector<int> consumersList);
-pair<int, float> next_edge_greedy_path(int prosumer, vector<Edge> *graph, int prosumerSize, bool available[]);
+pair<int, float> next_edge_greedy_path(int prosumer, vector<Edge> *graph, int prosumerSize, bool available[], bool consumers[]);
 bool canCreateNewEdge(const vector<Edge> *tempGraph, int householdId, int targetHouseholdId);
 
 int readFile(string path, int type);
 int preprocess(bool printValues);
 
 int precomputePython(char *fileName);
-int precomputePythonNeighborhood(const char *name, const char *function, char *loadFile, char *saveFile);
+int precomputePythonNeighborhood(const char *name, const char *function, char *fileName);
 
 int pythonOptimizer(int indexCount, int indexes[]);
 int pythonOptimizerOnline(const char *name, const char *function, int indexCount, int indexes[]);
@@ -71,38 +71,38 @@ int pythonNeighborhoodPrecomputed(const char *name, const char *function, int in
 
 string loadingBar(float percent);
 
-
+/*
 class Prosumer
 {
 public:
-	float pv;
-	float battery;
 	int matchedToIndex;
 	float saved;
 };
+*/
 
 struct
 {
 	float pv[datasetSize];
 	float battery[datasetSize];
 	float cons[datasetSize];
-	Prosumer *prosumers[datasetSize];
+	vector<tuple<int,int,float>> prosumers;
 	bool availableConsumers[datasetSize];
 	float currentWeight;
-	int neighbors[datasetSize];
+	vector<int> neighbors;
 	int neighborCount;
 	int l;
 	int procheck;
 	bool precompute;
-	int prosumerList[datasetSize];
-	int consumerList[datasetSize];
+	vector<int> prosumerList;
+	vector<int> consumerList;
 	int prosumerCount;
 	int consumerCount;
+	int length;	// only ever use this length when it concerns the whole dataset !!!Trust Me!!!
 } myData;
 
 int main(int argc, char *argv[])
 {
-	myData.precompute = true;
+
 	time_t t1 = time(NULL);
 	Py_Initialize();
 
@@ -125,11 +125,10 @@ int main(int argc, char *argv[])
 
 		myData.procheck = stoi(argv[1]);
 		myData.l = stoi(argv[2])+1;
-
-
 	}
 	else if (argc == 3)
 	{
+		myData.precompute = false;
 		myData.procheck = stoi(argv[1]);
 		myData.l = stoi(argv[2])+1;
 
@@ -139,6 +138,7 @@ int main(int argc, char *argv[])
 	}
 	else if (argc == 2)
 	{
+		myData.precompute = false;
 		myData.l = datasetSize;
 		myData.procheck = stoi(argv[1]);
 		cout << "Standard mode activated!" << endl;
@@ -146,6 +146,7 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
+		myData.precompute = false;
 		myData.l = datasetSize;
 		myData.procheck = datasetSize;
 		cout << "Standard mode activated!" << endl;
@@ -163,92 +164,20 @@ int main(int argc, char *argv[])
 	// NOTE Not sure if this is used anywhere. Doesn't seem to be needed.
 	//pythonNeighborhood(0);
 
-	preprocess(false);
+	//preprocess(false);
 
 
 	
 
-		//double greedy extra
-
-	vector<int> prosumersList;
-	vector<int> consumersList;
 	vector<tuple<int, int, double>> result;
-
-	if(!myData.precompute){
-
-		for (int i = 0; i < myData.procheck; i++)
-		{
-			if (myData.prosumers[i] == NULL)
-			{
-			consumersList.push_back(i);
-			continue;
-			}
-			prosumersList.push_back(i);
-		}
+	if(myData.procheck){
+		result = doublegreedyMatching(myData.prosumerList, myData.consumerList);
 	}else{
-		for (int i = 0; i < myData.prosumerCount; i++)
-		{
-			prosumersList.push_back(myData.prosumerList[i]);
-		}
-		for (int i = 0; i < myData.consumerCount; i++)
-		{
-			consumersList.push_back(myData.consumerList[i]);
-		}
-	}
-
-	//				comment the comment block below to run double greedy
-	/*
-	result = doublegreedyMatching(prosumersList, consumersList);
-
-	string path = "test.txt";
-
-	ofstream file;
-
-	file.open(path);
-	if (!file.is_open())
-	{
-		cout << "error couldnt open output file\n";
-		return EXIT_FAILURE;
+		greedyMatching(myData.prosumerList, myData.consumerList);
 	}
 
 
-	cout << "size: " << result.size() << endl;
-	for (size_t i = 0; i < result.size(); i++)
-    {
-
-        file << "First value: " << get<0>(result[i]) << endl;
-        file << "Second value: " << get<1>(result[i]) << endl;
-        file << "Third value: " << get<2>(result[i]) << endl;
-    }
-
-    file.close();
-	*/
-
-
-    //uncomment below to run normal greedy
-    greedyMatching(prosumersList, consumersList);
 	
-
-
-	///*
-	for (int i = 0; i < datasetSize; i++)
-	{
-		if (myData.prosumers[i] == NULL)
-		{
-			continue;
-		}
-		else
-		{
-			// no point displaying prosumers who didn't match for now
-			if (myData.prosumers[i]->matchedToIndex == -1)
-			{
-				break;
-			}
-		}
-		cout << endl
-			 << "Prosumer " << "\033[94m" << i << "\033[m" << " is matched to consumer " << "\033[94m" << myData.prosumers[i]->matchedToIndex << "\033[m" << " which saves " << "\033[92m" << myData.prosumers[i]->saved << "\033[m" << endl;
-	}//*/
-
 	if (Py_FinalizeEx() < 0)
 	{
 		return 120;
@@ -257,55 +186,79 @@ int main(int argc, char *argv[])
 	double diff = difftime(t2, t1);
 	printf("\n\033[91m%.f\033[m seconds since start of execution.\n", diff);
 
-
-
-	double sum = 0;
-	for (int i = 0; i < datasetSize; i++)
+	// A file for storing the results of the run
+	string path = "result.txt";
+	ofstream file;
+	file.open(path);
+	if (!file.is_open())
 	{
-		if (myData.prosumers[i] == NULL)
-		{
-			continue;
-		}
-		if (myData.prosumers[i]->matchedToIndex == -1)
-		{
-			continue;
-		}
-		sum = sum + myData.prosumers[i]->saved;
+		cout << "error couldnt open output file\n";
+		return EXIT_FAILURE;
 	}
 
+	double sum = 0;
+	cout << myData.prosumers.empty() << endl;
+	while(!myData.prosumers.empty()){
+		tuple<int,int,float> match = myData.prosumers.back();
+		myData.prosumers.pop_back();
+		sum += get<2>(match);
+
+		//writing the match to the file
+		file << "Prosumer: " << get<0>(match) << endl;
+		file << "Consumer: " << get<1>(match) << endl;
+		file << "Weight: " << get<2>(match) << endl;
+
+		cout << endl << "Prosumer " << "\033[94m" << get<0>(match) << "\033[m" << " is matched to consumer " << "\033[94m" << get<1>(match) << "\033[m" << " which saves " << "\033[92m" << get<2>(match) << "\033[m" << endl;
+	}
 	printf("\n\033[92m%.6f\033[m saved in total across all pairs.\n", sum);
+
+	file.close();
 
 	return EXIT_SUCCESS;
 }
 
 int greedyMatching(vector<int> prosumersList, vector<int> consumersList)
 {
+	size_t prosumerSize = prosumersList.size(); //equal to the amount of prosumers in vector prosumersList
+	size_t consumerSize = consumersList.size(); //equal to the amount of consumers in vector consumersList
+	bool available[myData.length];				//available consumers
 
-	int prosumerSize = int(prosumersList.size()); //equal to the amount of prosumers in vector prosumersList
+	for (size_t i = 0; i < prosumerSize; i++){
+		available[prosumersList[i]] = false;
+	}
 
-	// loops backwards since high comsumptions are at high indicies
-	for (int i = 0; i < prosumerSize; i++)
+	for (size_t i = 0; i < consumerSize; i++){
+		available[consumersList[i]] = true;
+	}
+	for (size_t i = 0; i < prosumerSize; i++)
 	{
-
-		cout << endl << "******* Prosumer " << "\033[94m" << i << "\033[m" << "/" << "\033[94m" << prosumerSize << "\033[m" << " *******" << endl;
+		cout << endl << "******* Prosumer " << "\033[94m" << i+1 << "\033[m" << "/" << "\033[94m" << prosumerSize << "\033[m" << " *******" << endl;
 
 		// finds the neighborhood via a python function see below for indepth
+		cout << prosumersList[i] << endl;
 		if(pythonNeighborhood(prosumersList[i])){
 			cout << "error when getting neighborHood from python" << endl;
 		}
 
-		float currentBestWeight = -1;
+		// setting this as -10 for so it is easier to see when the output is clearly false
+		// should change for 0 later
+		float currentBestWeight = -10;
 		int currentBestIndex = -1;
 
 		/*
 		//debug code to check the neighborhoods of the prosumers
-		cout << "Prosumer " << i << " has the following neighbors: " << endl;
+		cout << "Prosumer " << i+1 << " with the index: " << prosumersList[i] << " has the following neighbors: " << endl;
 		for(int j=0; j<myData.neighborCount; j++){
 			cout << myData.neighbors[j] << endl;
 		}
 		cout << "\n\n" << endl;
+		if(i>2){
+			return 0;
+		}
 		continue;
 		*/
+
+
 
 
 		// makes sure l doesn't account for unavailable neighbors
@@ -319,7 +272,7 @@ int greedyMatching(vector<int> prosumersList, vector<int> consumersList)
 
 
 			// checking if edge j in the neighborhood is available
-			if (!myData.availableConsumers[myData.neighbors[j]]){
+			if (!available[myData.neighbors[j]]){
 				// this counts prosumers too which means we always examine the entire neighborhood or l+1 available consumers depending on which of these values is smaller
 				count++;
 				continue;
@@ -333,31 +286,37 @@ int greedyMatching(vector<int> prosumersList, vector<int> consumersList)
 				currentBestIndex = myData.neighbors[j];
 			}
 		}
-		cout << endl
-			 << "best index: " << "\033[92m" << currentBestIndex << "\033[m" << "\nbest weight: " << "\033[92m" << currentBestWeight << "\033[m" << endl;
+		cout << endl << "best index: " << "\033[92m" << currentBestIndex << "\033[m" << "\nbest weight: " << "\033[92m" << currentBestWeight << "\033[m" << endl;
 
 		// matching the prosumer to its consumer and marking the consumer as unavailable
-		myData.prosumers[prosumersList[i]]->matchedToIndex = currentBestIndex;
-		myData.prosumers[prosumersList[i]]->saved = currentBestWeight;
-		myData.availableConsumers[currentBestIndex] = false;
+		tuple<int,int,float> match = make_tuple(prosumersList[i], currentBestIndex, currentBestWeight);
+		myData.prosumers.push_back(match);
+		available[currentBestIndex] = false;
 	}
 	return EXIT_SUCCESS;
 }
 
 vector<tuple<int, int, double>>  doublegreedyMatching(vector<int> prosumersList, vector<int> consumersList){
 
+	size_t prosumerSize = prosumersList.size(); //equal to the amount of prosumers in vector prosumersList
+	size_t consumerSize = consumersList.size(); //equal to the amount of consumers in vector consumersList
+	bool consumers[myData.length];				//list of consumers at their actual index for fast lookups
+	bool available[myData.length];				//list of available prosumers/consumers
 
 
-	bool available[datasetSize];
-
-	for (int i = 0; i < datasetSize; i++)
-	{
-
-		available[i] = true;
-
+	for (size_t i = 0; i < prosumerSize; i++){
+		consumers[prosumersList[i]] = false;
+	}
+	for (size_t i = 0; i < consumerSize; i++){
+		consumers[consumersList[i]] = true;
 	}
 
-	int prosumerSize = int(prosumersList.size()); //equal to the amount of prosumers in vector prosumersList
+
+
+	for (size_t i = 0; i < consumerSize+prosumerSize; i++){
+		available[i] = true;
+	}
+
 
 	vector<tuple<int, int, double>> allmatchings;
 
@@ -365,7 +324,7 @@ vector<tuple<int, int, double>>  doublegreedyMatching(vector<int> prosumersList,
 	cout << "Size: " << prosumerSize << endl;
 
 
-	for(int i = 0;i < prosumerSize; i++)
+	for(size_t i = 0; i < prosumerSize; i++)
 	{
 		int k = 0;
 		int household;
@@ -379,7 +338,7 @@ vector<tuple<int, int, double>>  doublegreedyMatching(vector<int> prosumersList,
 			int o = 1;
 			household = prosumersList[i];
 			while(o == 1 || k > 100){
-				pair<int, float> result = next_edge_greedy_path(household, &tempGraph, prosumersList.size(), available);
+				pair<int, float> result = next_edge_greedy_path(household, &tempGraph, prosumersList.size(), available, consumers);
 				if(result.first != -1){
 					Edge addEdge = {household, result.first, result.second};
 					tempGraph.push_back(addEdge);
@@ -398,42 +357,39 @@ vector<tuple<int, int, double>>  doublegreedyMatching(vector<int> prosumersList,
 			else{
 				for (const Edge edge : tempGraph) {
 
-					if (myData.prosumers[edge.source] == NULL) //if the source vertex is a consumer
+					if (consumers[edge.source]) //if the source vertex is a consumer
 					{
 						cout << "skiped since index " << edge.source << " is a consumer" << endl;
 						continue; //we skip, since we only want prosumer to consumer,  other, if we dont remove this we could get groups of size 3.
 					}
 
 
-					myData.prosumers[edge.source]->saved = edge.weight;
-					myData.prosumers[edge.source]->matchedToIndex = edge.destination;
+					tuple<int,int,float> match = make_tuple(edge.source, edge.destination, edge.weight);
+					myData.prosumers.push_back(match);
+					allmatchings.push_back(match);
 					cout << "added a edge with origin " << edge.source << " to the graph" << endl;
-					allmatchings.push_back(make_tuple(edge.source, edge.destination, edge.weight));
 					available[edge.source] = false;
 					available[edge.destination] = false;
 				}
-
-
 			}
 		}
 	}
-	/* code arr.push_back(std::make_tuple(1, 3.14, "Hello")); // First tuple */
 
-	std::cout << "Size of result inside doublegreedyMatching: " << allmatchings.size() << std::endl;
+	cout << "Size of result inside doublegreedyMatching: " << allmatchings.size() << endl;
 	return allmatchings;
 }
 
 
-pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, int prosumersize, bool available[]) {
+pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, int prosumersize, bool available[], bool consumers[]) {
 
 	cout << "we are checking household number " << household << endl;
 	if(pythonNeighborhood(household)){
 		cout << "error when getting neighborHood from python" << endl;
 	}
 
-	std::vector<int> N; //vi kan möjligtvis begränsa längden av N genom att göra den l+1 lång array.
+	vector<int> N; //vi kan möjligtvis begränsa längden av N genom att göra den l+1 lång array.
 
-	if(myData.prosumers[household] != NULL){
+	if(!consumers[household]){
 		int count = 0;
 		for (int i = 0; i < myData.neighborCount && i < myData.l + count; i++)
 		{
@@ -441,7 +397,7 @@ pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, i
 				count++;
 			}else{
 				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i])){
-					if(myData.prosumers[myData.neighbors[i]] == NULL){
+					if(consumers[myData.neighbors[i]]){
 						N.push_back(myData.neighbors[i]);
 					}else{
 						count++;
@@ -461,7 +417,7 @@ pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, i
 				count++;
 			}else{
 				if(canCreateNewEdge(tempgraph, household, myData.neighbors[i])){
-					if(myData.prosumers[myData.neighbors[i]] != NULL){
+					if(!consumers[myData.neighbors[i]]){
 						N.push_back(myData.neighbors[i]);
 					}else{
 						count++;
@@ -482,7 +438,7 @@ pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, i
 			for (size_t i = 0; i < N.size(); i++){
 				int list[2];
 				// the function runOptimize(indexList) is picky about the order of the arguments
-				if(myData.prosumers[household] != NULL){
+				if(!consumers[household]){
 					list[0] = household;
 					list[1] = N[i];
 				}
@@ -501,7 +457,7 @@ pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, i
 		else{
 			j = N[0];
 			int list[2];
-			if(myData.prosumers[household] != NULL){
+			if(!consumers[household]){
 				list[0] = household;
 				list[1] = j;
 			}
@@ -518,7 +474,7 @@ pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, i
 	}
 
 
-	return std::make_pair(j, weight);
+	return make_pair(j, weight);
 }
 
 
@@ -535,133 +491,6 @@ bool canCreateNewEdge(const vector<Edge> *tempGraph, int householdId, int target
 	}
 	// If both checks pass, return true
 	return true;
-}
-
-// prepares the data for the matching
-// calling it with true will print all values used for the matching
-int preprocess(bool printValues)
-{
-	// this extracts the pv, battery and cons values to the files
-	if (system("python3 preprocess.py"))
-	{
-		cout << "Failed to run extract" << endl;
-		return EXIT_FAILURE;
-	}
-
-	// retrieves the pv and battery values from the files and optionally prints them all out
-	// could probably generalize the following more but not sure how much of this stays
-	if (readFile("pvdata.txt", pvValue))
-	{
-		cout << "error couldn't read pvdata.txt\n";
-	}
-	else
-	{
-		if (printValues)
-		{
-			cout << "pv values: \n";
-			for (int i = 0; i < datasetSize; i++)
-			{
-				cout << myData.pv[i] << "\t";
-			}
-			cout << "\n\n";
-		}
-	}
-	if (readFile("batterydata.txt", batteryValue))
-	{
-		cout << "error couldn't read batterydata.txt\n";
-	}
-	else
-	{
-		if (printValues)
-		{
-			cout << "battery values: \n";
-			for (int i = 0; i < datasetSize; i++)
-			{
-				cout << myData.battery[i] << "\t";
-			}
-			cout << "\n\n";
-		}
-	}
-
-	// The file this reads is huge so ignored for now
-	/*
-	if(readFile("consdata.txt",consValue)){
-		cout << "error couldn't read consdata.txt\n";
-	}
-	else{
-		if(printValues){
-			cout << "consumption values: \n";
-			for(int i = 0; i<100; i++){
-				cout << myData.cons[i] << "\t";
-			}
-			cout << "\n\n";
-		}
-	}
-	*/
-
-	// initalizes the prosumer and consumer sets
-	for (int i = 0; i < datasetSize; i++)
-	{
-		myData.prosumers[i] = NULL;
-		myData.availableConsumers[i] = false;
-	}
-
-	// int counter = 0;
-	for (int i = 0; i < datasetSize; i++)
-	{
-		if (myData.pv[i] != 0 || myData.battery[i] != 0)
-		{
-			// initalizes a new pointer for every prosumer tuple
-			Prosumer *prosumer = new Prosumer{myData.pv[i], myData.battery[i], -1, -1};
-			/*(Prosumer)malloc(sizeof(Prosumer));
-			prosumer->pv = myData.pv[i];
-			prosumer->battery = myData.battery[i];
-			prosumer->matchedToIndex = -1;*/
-			myData.prosumers[i] = prosumer;
-
-			/*
-				The following makes a condensed array instead of a sparse array
-				A dense array means less values to check when running the alg
-				However NULL checking should be fast so they are probably about equal
-
-				*** Make sure to uncomment the //int counter = 0; above and change the NULL checks to break instead of continue in that case ***
-			*/
-			// myData.prosumers[counter] = prosumer;
-			// counter++;
-		}
-		else
-		{
-			myData.availableConsumers[i] = true;
-		}
-	}
-	// prints the prosumer and consumer set
-	if (printValues)
-	{
-		cout << "Index values of prosumers: \n";
-		for (int i = 0; i < datasetSize; i++)
-		{
-			if (myData.prosumers[i] == NULL)
-			{
-				// break;
-				continue;
-			}
-			cout << i << "\t";
-		}
-		cout << "\n\n";
-
-		cout << "Index values of available consumers: \n";
-		for (int i = 0; i < datasetSize; i++)
-		{
-			if (!myData.availableConsumers[i])
-			{
-				// break;
-				continue;
-			}
-			cout << i << "\t";
-		}
-		cout << "\n\n";
-	}
-	return EXIT_SUCCESS;
 }
 
 // reads in the data from a a file
@@ -719,10 +548,12 @@ PyObject *makelist(int array[], int size)
 
 int makearrNeighbors(PyObject *list)
 {
+	myData.neighbors.clear();
 	for (int i = 0; i < myData.neighborCount; ++i)
 	{
-		myData.neighbors[i] = PyLong_AsLong(PyList_GetItem(list, i));
+		myData.neighbors.push_back(PyLong_AsLong(PyList_GetItem(list, i)));
 	}
+	cout << myData.neighbors.front() << endl;
 	return EXIT_SUCCESS;
 }
 
@@ -732,11 +563,11 @@ int makearrLists(PyObject *prosumerList, PyObject *consumerList)
 	myData.consumerCount = PyList_Size(consumerList);
 	for (int i = 0; i < myData.prosumerCount; ++i)
 	{
-		myData.prosumerList[i] = PyLong_AsLong(PyList_GetItem(prosumerList, i));
+		myData.prosumerList.push_back(PyLong_AsLong(PyList_GetItem(prosumerList, i)));
 	}
 	for (int i = 0; i < myData.consumerCount; ++i)
 	{
-		myData.consumerList[i] = PyLong_AsLong(PyList_GetItem(consumerList, i));
+		myData.consumerList.push_back(PyLong_AsLong(PyList_GetItem(consumerList, i)));
 	}
 	return EXIT_SUCCESS;
 }
@@ -806,7 +637,6 @@ int precomputePython(char *fileName)
 		}else{
 			return EXIT_FAILURE;
 		}
-
 		/* Initializes the neighborHood dictionary */
 		pName = PyUnicode_DecodeFSDefault(preComputeNeighborhoods);
 		/* Error checking of pName left out */
@@ -833,11 +663,43 @@ int precomputePython(char *fileName)
 			return EXIT_FAILURE;
 		}
 
-		return precomputePythonNeighborhood(preComputeNeighborhoods, findNeighborhoods, fileName, fileName);
+		/* Grabs the total amount of prosumers and consumers */
+		pName = PyUnicode_DecodeFSDefault(preComputeRunOpt);
+		/* Error checking of pName left out */
+
+		pModule = PyImport_Import(pName);
+		Py_DECREF(pName);
+		if (pModule != NULL)
+		{
+			pFunc = PyObject_GetAttrString(pModule, "getLength");
+			/* pFunc is a new reference */
+
+			if (pFunc && PyCallable_Check(pFunc))
+			{
+				pArgs = PyTuple_New(1);
+				PyTuple_SetItem(pArgs, 0, PyUnicode_DecodeFSDefault(fileName));
+
+				pValue = PyObject_CallObject(pFunc, pArgs);
+				myData.length = PyLong_AsLong(pValue);
+				Py_XDECREF(pValue);
+				cout << myData.length << endl;
+				cout << "Initialized length" << endl;
+			}
+			else{
+				return EXIT_FAILURE;
+			}
+			Py_XDECREF(pFunc);
+			Py_DECREF(pModule);
+			/* End of initialization */
+		}else{
+			return EXIT_FAILURE;
+		}
+
+		return precomputePythonNeighborhood(preComputeNeighborhoods, findNeighborhoods, fileName);
 	}
 }
 
-int precomputePythonNeighborhood(const char *name, const char *function, char *loadFile, char *saveFile)
+int precomputePythonNeighborhood(const char *name, const char *function, char *fileName)
 {
 	PyObject *pName, *pModule, *pFunc;
 	PyObject *pArgs, *pValue;
@@ -857,9 +719,8 @@ int precomputePythonNeighborhood(const char *name, const char *function, char *l
 
 		if (pFunc && PyCallable_Check(pFunc))
 		{
-			pArgs = PyTuple_New(2);
-			PyTuple_SetItem(pArgs, 0, PyUnicode_DecodeFSDefault(loadFile));
-			PyTuple_SetItem(pArgs, 1, PyUnicode_DecodeFSDefault(saveFile));
+			pArgs = PyTuple_New(1);
+			PyTuple_SetItem(pArgs, 0, PyUnicode_DecodeFSDefault(fileName));
 
 			pValue = PyObject_CallObject(pFunc, pArgs);
 			Py_DECREF(pArgs);
@@ -902,6 +763,61 @@ int precomputePythonNeighborhood(const char *name, const char *function, char *l
 		fprintf(stderr, "Failed to load \"%s\"\n", name);
 		return EXIT_FAILURE;
 	}
+}
+
+// prepares the data for the matching
+// calling it with true will print all values used for the matching
+int preprocess(bool printValues)
+{
+	/*
+	// initalizes the prosumer and consumer sets
+	for (int i = 0; i < datasetSize; i++)
+	{
+		myData.prosumers[i] = NULL;
+		myData.availableConsumers[i] = false;
+	}
+
+	// int counter = 0;
+	for (int i = 0; i < datasetSize; i++)
+	{
+		if (myData.pv[i] != 0 || myData.battery[i] != 0)
+		{
+			// initalizes a new pointer for every prosumer tuple
+			Prosumer *prosumer = new Prosumer{-1, -1};
+			myData.prosumers[i] = prosumer;
+		}
+		else
+		{
+			myData.availableConsumers[i] = true;
+		}
+	}
+	// prints the prosumer and consumer set
+	if (printValues)
+	{
+		cout << "Index values of prosumers: \n";
+		for (int i = 0; i < datasetSize; i++)
+		{
+			if (myData.prosumers[i] == NULL)
+			{
+				continue;
+			}
+			cout << i << "\t";
+		}
+		cout << "\n\n";
+
+		cout << "Index values of available consumers: \n";
+		for (int i = 0; i < datasetSize; i++)
+		{
+			if (!myData.availableConsumers[i])
+			{
+				continue;
+			}
+			cout << i << "\t";
+		}
+		cout << "\n\n";
+	}
+	*/
+	return EXIT_SUCCESS;
 }
 
 // calls a helper function which calls the optimizer python function and returns the result
@@ -1138,6 +1054,7 @@ int pythonNeighborhoodPrecomputed(const char *name, const char *function, int in
 		if (pFunc && PyCallable_Check(pFunc))
 		{
 			pArgs = PyTuple_New(1);
+			cout << index << endl;
 			PyTuple_SetItem(pArgs, 0, PyLong_FromLong(index));
 
 			pValue = PyObject_CallObject(pFunc, pArgs);
