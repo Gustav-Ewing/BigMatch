@@ -1,29 +1,36 @@
 import sys
 
+
+#### current method for calling python functions doesn't set argv when it calls them and one of the libraries downstream uses argv[0] for something
+#### this simply sets argv[0] to the same value it would have had if you called "python3 preprocess.py ..."
 if(len(sys.argv) == 0):
     sys.argv = ["preprocess.py"]
 
 from optimizer import *
 
-##### how to run ######
-##### python3 preprocess.py
-##### example ####
-#### python3 preprocess.py
-#### for now this script just exports the data for c++
-opt = Optimizer.opt2221()
+
+def preprocess():
+    opt = Optimizer.opt2221()
+
+    prosumerList = []
+    consumerList = []
+    if len(opt.pv) != len(opt.battery):
+        print("error: Malformed data! Different amount of entries in pv and battery lists")
+        #### might be better to return a different value here but that might cause issues on the receiver side
+        #### it's better to just watch for the above error I think
+        return prosumerList, consumerList
 
 
-pvfile = open("pvdata.txt", "w")
-pv = " ".join(str(x) for x in opt.pv)
-pvfile.write(pv)
-pvfile.close()
-batteryfile = open("batterydata.txt", "w")
-battery = " ".join(str(x) for x in opt.battery)
-batteryfile.write(battery)
-batteryfile.close()
+    for i in range(len(opt.pv)):
+        if opt.pv[i] != 0:
+            prosumerList.append(i)
+        elif opt.battery[i] != 0:
+            prosumerList.append(i)
+        else:
+            consumerList.append(i)
 
-##### The file generated from the following is huge so it's ignored
-##### consfile = open("consdata.txt", "w")
-##### cons = " ".join(str(x) for x in opt.cons)
-##### consfile.write(cons)
-##### consfile.close()
+    return prosumerList, consumerList
+
+def getLength():
+    opt = Optimizer.opt2221()
+    return len(opt.pv)

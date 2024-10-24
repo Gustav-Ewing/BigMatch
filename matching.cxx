@@ -1,16 +1,14 @@
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <filesystem>
 #include <Python.h>
 
 
 // defines for global number macros
+// these are only used for on the fly computations
+// they should probably be retired since they are specific to the current dataset
 #define datasetSize 2221
-#define pvValue 0
-#define batteryValue 1
-#define consValue 2
-#define weightValue 3
 #define RANGE 40000
 
 // defines for the naming of python modules
@@ -25,13 +23,13 @@
 #define findNeighborhood "findNeighborhood"
 #define runOptimize "runOptimize"
 #define findNeighborhoods "findNeighborhoods"
+#define preprocesspy "preprocess"
 
 using namespace std;
 
 #include <vector>
 #include <tuple>
 #include <utility>
-#include <chrono>
 #include <ctime>
 
 
@@ -54,9 +52,6 @@ vector<tuple<int, int, double>> doublegreedyMatching(vector<int> prosumersList, 
 pair<int, float> next_edge_greedy_path(int prosumer, vector<Edge> *graph, int prosumerSize, bool available[], bool consumers[]);
 bool canCreateNewEdge(const vector<Edge> *tempGraph, int householdId, int targetHouseholdId);
 
-int readFile(string path, int type);
-int preprocess(bool printValues);
-
 int precomputePython(char *fileName);
 int precomputePythonNeighborhood(const char *name, const char *function, char *fileName);
 
@@ -68,17 +63,8 @@ int pythonNeighborhood(int index);
 int pythonNeighborhoodOnline(const char *name, const char *function, int index);
 int pythonNeighborhoodPrecomputed(const char *name, const char *function, int index);
 
-
 string loadingBar(float percent);
 
-/*
-class Prosumer
-{
-public:
-	int matchedToIndex;
-	float saved;
-};
-*/
 
 struct
 {
@@ -91,13 +77,16 @@ struct
 	vector<int> neighbors;
 	int neighborCount;
 	int l;
-	int procheck;
+	bool version;
 	bool precompute;
+	bool sortLists;
+	bool sortNeigh;
 	vector<int> prosumerList;
 	vector<int> consumerList;
 	int prosumerCount;
 	int consumerCount;
 	int length;	// only ever use this length when it concerns the whole dataset !!!Trust Me!!!
+	int weightsUsed;
 } myData;
 
 int main(int argc, char *argv[])
@@ -112,10 +101,22 @@ int main(int argc, char *argv[])
 	PyRun_SimpleString("sys.path.append(\".\")");
 
 
-	if (argc == 4){
+	myData.sortLists = false;
+	myData.sortNeigh = false;
+
+	// yanky special case to test sortings on the precomputed datasets
+	//	build/Matching 0 0 "2k.bin" 0 1 would result in a naive local greedy on the 2k set with descending sorting on the prosumers and ascending on the neighborhoods
+	// the default is be descending for both
+	if (argc == 6){
+		myData.sortLists = stoi(argv[4]);
+		myData.sortNeigh = stoi(argv[5]);
+	}
+
+
+	if (argc >= 4){
 		myData.precompute = true;
 
-		//probably should sanitize this but whatever!?!?!?
+		//probably should sanitize this but whatever...
 		int length = strlen(argv[3])+1;
 		char filePath[length];
 		strcpy(filePath,argv[3]);
@@ -123,24 +124,23 @@ int main(int argc, char *argv[])
 		cout << "Precompute mode activated! Using file: " << argv[3] << endl;
 		precomputePython(filePath);
 
-		myData.procheck = stoi(argv[1]);
+		myData.version = stoi(argv[1]);
 		myData.l = stoi(argv[2])+1;
 	}
 	else if (argc == 3)
 	{
 		myData.precompute = false;
-		myData.procheck = stoi(argv[1]);
+		myData.version = stoi(argv[1]);
 		myData.l = stoi(argv[2])+1;
 
-		myData.l = datasetSize;
-		myData.procheck = stoi(argv[1]);
 		cout << "Standard mode activated!" << endl;
 	}
 	else if (argc == 2)
 	{
 		myData.precompute = false;
 		myData.l = datasetSize;
-		myData.procheck = stoi(argv[1]);
+		myData.version = stoi(argv[1]);
+
 		cout << "Standard mode activated!" << endl;
 		cout << "l value not specified so no cap implemented" << endl;
 	}
@@ -148,48 +148,52 @@ int main(int argc, char *argv[])
 	{
 		myData.precompute = false;
 		myData.l = datasetSize;
-		myData.procheck = datasetSize;
+		myData.version = datasetSize;
+
 		cout << "Standard mode activated!" << endl;
-		cout << "i value not specified defaulting" << endl;
+		cout << "version not selected" << endl;
 		cout << "l value not specified so no cap implemented" << endl;
 	}
 
+	// A unifed call to the preprocessor for the on the fly versions
+	// It's okay to make filepath an empty list here since this arg does nothing in this case
+	if(!myData.precompute){
+		char filePath[0];
+		precomputePython(filePath);
+	}
 
-
-
-
-
-
+	myData.weightsUsed = 0;
 	myData.neighborCount = 0; // simple init value to avoid undefined behavior
-	// NOTE Not sure if this is used anywhere. Doesn't seem to be needed.
-	//pythonNeighborhood(0);
-
-	//preprocess(false);
-
-
 	
-
+	cout << "list lengths" << endl;
+	cout << myData.prosumerList.size() << endl;
+	cout << myData.consumerList.size() << endl;
+	cout << myData.prosumerList[0] << endl;
+	cout << myData.consumerList[0] << endl;
 	vector<tuple<int, int, double>> result;
-	if(myData.procheck){
+	if(myData.version){
+		cout << "running double greedy algorithm" << endl;
 		result = doublegreedyMatching(myData.prosumerList, myData.consumerList);
 	}else{
+		cout << "running greedy algorithm" << endl;
 		greedyMatching(myData.prosumerList, myData.consumerList);
 	}
 
 
-	
 	if (Py_FinalizeEx() < 0)
 	{
 		return 120;
 	}
 	time_t t2 = time(NULL);
 	double diff = difftime(t2, t1);
-	printf("\n\033[91m%.f\033[m seconds since start of execution.\n", diff);
+
 
 	// A file for storing the results of the run
-	string path = "result.txt";
+	string path = "testresult.txt";
 	ofstream file;
-	file.open(path);
+
+	//open file in append mode
+	file.open(path, ios_base::app);
 	if (!file.is_open())
 	{
 		cout << "error couldnt open output file\n";
@@ -197,20 +201,44 @@ int main(int argc, char *argv[])
 	}
 
 	double sum = 0;
-	cout << myData.prosumers.empty() << endl;
+	int count = 0;
+	cout << "Is the collector vector empty: " << myData.prosumers.empty() << endl;
 	while(!myData.prosumers.empty()){
 		tuple<int,int,float> match = myData.prosumers.back();
 		myData.prosumers.pop_back();
 		sum += get<2>(match);
-
+		count++;
+		/*
 		//writing the match to the file
 		file << "Prosumer: " << get<0>(match) << endl;
 		file << "Consumer: " << get<1>(match) << endl;
 		file << "Weight: " << get<2>(match) << endl;
 
 		cout << endl << "Prosumer " << "\033[94m" << get<0>(match) << "\033[m" << " is matched to consumer " << "\033[94m" << get<1>(match) << "\033[m" << " which saves " << "\033[92m" << get<2>(match) << "\033[m" << endl;
+		*/
 	}
+
+	file << "\'";
+	for(int i=0; i<argc; i++){
+		//an extra space gets added before the first \t but that doesn't affect the functionality
+		file << argv[i] << " ";
+	}
+	file << "\t\t";
+
+	file << diff << " seconds since start of execution.\t \t";
+
+	file << myData.weightsUsed << "\tweights used during the execution.\t \t";
+
+	file << sum << "\tsaved in total across all pairs.\t \t";
+
+	file << count << " prosumers matched in total.\n";
+
+
+
+	printf("\n\033[91m%.f\033[m seconds since start of execution.\n", diff);
+	printf("\n\033[91m%.i\033[m weights used during the execution.\n", myData.weightsUsed);
 	printf("\n\033[92m%.6f\033[m saved in total across all pairs.\n", sum);
+	printf("\n\033[92m%.i\033[m prosumers matched in total.\n", count);
 
 	file.close();
 
@@ -235,12 +263,12 @@ int greedyMatching(vector<int> prosumersList, vector<int> consumersList)
 		cout << endl << "******* Prosumer " << "\033[94m" << i+1 << "\033[m" << "/" << "\033[94m" << prosumerSize << "\033[m" << " *******" << endl;
 
 		// finds the neighborhood via a python function see below for indepth
-		cout << prosumersList[i] << endl;
+		//cout << prosumersList[i] << endl;
 		if(pythonNeighborhood(prosumersList[i])){
 			cout << "error when getting neighborHood from python" << endl;
 		}
 
-		// setting this as -10 for so it is easier to see when the output is clearly false
+		// setting this as -10 for now so it is easier to see when the output is clearly false
 		// should change for 0 later
 		float currentBestWeight = -10;
 		int currentBestIndex = -1;
@@ -280,6 +308,7 @@ int greedyMatching(vector<int> prosumersList, vector<int> consumersList)
 
 			int list[2] = {prosumersList[i], myData.neighbors[j]};
 			pythonOptimizer(2, list);
+			myData.weightsUsed++;
 			if (currentBestWeight < myData.currentWeight)
 			{
 				currentBestWeight = myData.currentWeight;
@@ -447,6 +476,7 @@ pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, i
 					list[1] = household;
 				}
 				pythonOptimizer(2, list);
+				myData.weightsUsed++;
 				if (weight < myData.currentWeight)
 				{
 					weight = myData.currentWeight;
@@ -466,6 +496,7 @@ pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, i
 				list[1] = household;
 			}
 			pythonOptimizer(2, list);
+			myData.weightsUsed++;
 			weight = myData.currentWeight;
 		}
 	}
@@ -493,49 +524,6 @@ bool canCreateNewEdge(const vector<Edge> *tempGraph, int householdId, int target
 	return true;
 }
 
-// reads in the data from a a file
-int readFile(string path, int type)
-{
-	ifstream file;
-
-	if (!filesystem::exists(path))
-	{
-		return EXIT_FAILURE;
-	}
-
-	file.open(path);
-	if (!file.is_open())
-	{
-		cout << "error\n";
-		return EXIT_FAILURE;
-	}
-	int i = 0;
-	string tmp;
-
-	while (file >> tmp)
-	{
-		if (type == pvValue)
-		{
-			myData.pv[i] = stof(tmp);
-		}
-		else if (type == batteryValue)
-		{
-			myData.battery[i] = stof(tmp);
-		}
-		else if (type == consValue)
-		{
-			myData.cons[i] = stof(tmp);
-		}
-		else if (type == weightValue)
-		{
-			myData.currentWeight = stof(tmp);
-		}
-		i++;
-	}
-	file.close();
-	return EXIT_SUCCESS;
-}
-
 PyObject *makelist(int array[], int size)
 {
 	PyObject *l = PyList_New(size);
@@ -553,7 +541,7 @@ int makearrNeighbors(PyObject *list)
 	{
 		myData.neighbors.push_back(PyLong_AsLong(PyList_GetItem(list, i)));
 	}
-	cout << myData.neighbors.front() << endl;
+	// cout << myData.neighbors.front() << endl;
 	return EXIT_SUCCESS;
 }
 
@@ -599,10 +587,131 @@ int precomputePython(char *fileName)
 			}
 			Py_XDECREF(pFunc);
 			Py_DECREF(pModule);
-			return EXIT_SUCCESS;
 		/* End of initialization */
 		}
-		return EXIT_FAILURE;
+		else{return EXIT_FAILURE;}
+
+
+		/* Grabs the total amount of prosumers and consumers for opt2221 */
+		pName = PyUnicode_DecodeFSDefault(preprocesspy);
+		/* Error checking of pName left out */
+
+		pModule = PyImport_Import(pName);
+		Py_DECREF(pName);
+		if (pModule != NULL)
+		{
+			pFunc = PyObject_GetAttrString(pModule, "getLength");
+			/* pFunc is a new reference */
+
+			if (pFunc && PyCallable_Check(pFunc))
+			{
+
+				pValue = PyObject_CallObject(pFunc, NULL);
+				myData.length = PyLong_AsLong(pValue);
+				Py_XDECREF(pValue);
+				cout << myData.length << endl;
+				cout << "Initialized length opt2221" << endl;
+			}
+			else{
+				return EXIT_FAILURE;
+			}
+			Py_XDECREF(pFunc);
+			Py_DECREF(pModule);
+			/* End of initialization */
+		}else{
+			return EXIT_FAILURE;
+		}
+
+
+
+		/* Loads the dictionary with all neighborhoods */
+		pName = PyUnicode_DecodeFSDefault(neighborHood);
+		/* Error checking of pName left out */
+
+		pModule = PyImport_Import(pName);
+		Py_DECREF(pName);
+		if (pModule != NULL)
+		{
+			pFunc = PyObject_GetAttrString(pModule, "loadNeighborhood");
+			/* pFunc is a new reference */
+
+			if (pFunc && PyCallable_Check(pFunc))
+			{
+
+				PyObject_CallObject(pFunc, NULL);
+				cout << "Initialized ditcionary neighborhood" << endl;
+			}
+			else{
+				return EXIT_FAILURE;
+			}
+			Py_XDECREF(pFunc);
+			Py_DECREF(pModule);
+			/* End of initialization */
+		}else{
+			return EXIT_FAILURE;
+		}
+
+
+		// the alternate way to initalize the prosumer and consumer lists compared to the file approach below
+		// very long and annoying but whatever
+
+		pName = PyUnicode_DecodeFSDefault(preprocesspy);
+		/* Error checking of pName left out */
+
+		pModule = PyImport_Import(pName);
+		Py_DECREF(pName);
+
+		if (pModule != NULL)
+		{
+			pFunc = PyObject_GetAttrString(pModule, preprocesspy);
+			/* pFunc is a new reference */
+
+			if (pFunc && PyCallable_Check(pFunc))
+			{
+				pValue = PyObject_CallObject(pFunc, NULL);
+				if (pValue != NULL)
+				{
+					PyObject *pTup1, *pTup2;
+
+					// saving the data to global variables
+					pTup1 = PyTuple_GetItem(pValue, 0);
+					pTup2 = PyTuple_GetItem(pValue, 1);
+
+					makearrLists(pTup1, pTup2);
+
+					// GC for the lists from the tuple pValue
+					// The GC of pValue should implicitly GC the lists but just to be sure
+					Py_DECREF(pTup1);
+					Py_DECREF(pTup2);
+					Py_DECREF(pValue);
+					cout << "Initialized prosumer and consumer lists" << endl;
+				}
+				else
+				{
+					Py_DECREF(pFunc);
+					Py_DECREF(pModule);
+					PyErr_Print();
+					fprintf(stderr, "Call failed\n");
+					return EXIT_FAILURE;
+				}
+			}
+			else
+			{
+				if (PyErr_Occurred())
+					PyErr_Print();
+				fprintf(stderr, "Cannot find function \"%s\"\n", preprocesspy);
+			}
+			Py_XDECREF(pFunc);
+			Py_DECREF(pModule);
+			return EXIT_SUCCESS;
+		}
+		else
+		{
+			PyErr_Print();
+			fprintf(stderr, "Failed to load \"%s\"\n", preprocesspy);
+			return EXIT_FAILURE;
+		}
+
 
 	}else{
 
@@ -719,8 +828,12 @@ int precomputePythonNeighborhood(const char *name, const char *function, char *f
 
 		if (pFunc && PyCallable_Check(pFunc))
 		{
-			pArgs = PyTuple_New(1);
+			pArgs = PyTuple_New(3);
 			PyTuple_SetItem(pArgs, 0, PyUnicode_DecodeFSDefault(fileName));
+
+			//Python actually accepts ints as bools in the same way as C++ so this is the easiest way to convert
+			PyTuple_SetItem(pArgs, 1, PyLong_FromLong(myData.sortLists));
+			PyTuple_SetItem(pArgs, 2, PyLong_FromLong(myData.sortNeigh));
 
 			pValue = PyObject_CallObject(pFunc, pArgs);
 			Py_DECREF(pArgs);
@@ -765,60 +878,6 @@ int precomputePythonNeighborhood(const char *name, const char *function, char *f
 	}
 }
 
-// prepares the data for the matching
-// calling it with true will print all values used for the matching
-int preprocess(bool printValues)
-{
-	/*
-	// initalizes the prosumer and consumer sets
-	for (int i = 0; i < datasetSize; i++)
-	{
-		myData.prosumers[i] = NULL;
-		myData.availableConsumers[i] = false;
-	}
-
-	// int counter = 0;
-	for (int i = 0; i < datasetSize; i++)
-	{
-		if (myData.pv[i] != 0 || myData.battery[i] != 0)
-		{
-			// initalizes a new pointer for every prosumer tuple
-			Prosumer *prosumer = new Prosumer{-1, -1};
-			myData.prosumers[i] = prosumer;
-		}
-		else
-		{
-			myData.availableConsumers[i] = true;
-		}
-	}
-	// prints the prosumer and consumer set
-	if (printValues)
-	{
-		cout << "Index values of prosumers: \n";
-		for (int i = 0; i < datasetSize; i++)
-		{
-			if (myData.prosumers[i] == NULL)
-			{
-				continue;
-			}
-			cout << i << "\t";
-		}
-		cout << "\n\n";
-
-		cout << "Index values of available consumers: \n";
-		for (int i = 0; i < datasetSize; i++)
-		{
-			if (!myData.availableConsumers[i])
-			{
-				continue;
-			}
-			cout << i << "\t";
-		}
-		cout << "\n\n";
-	}
-	*/
-	return EXIT_SUCCESS;
-}
 
 // calls a helper function which calls the optimizer python function and returns the result
 int pythonOptimizer(int indexCount, int indexes[])
@@ -1054,7 +1113,6 @@ int pythonNeighborhoodPrecomputed(const char *name, const char *function, int in
 		if (pFunc && PyCallable_Check(pFunc))
 		{
 			pArgs = PyTuple_New(1);
-			cout << index << endl;
 			PyTuple_SetItem(pArgs, 0, PyLong_FromLong(index));
 
 			pValue = PyObject_CallObject(pFunc, pArgs);
