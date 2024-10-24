@@ -9,7 +9,7 @@ testfile = open(sys.argv[1]).read().split("\n")
 
 resultrows = []
 
-fields = ["test name" , "weights used" , "total weight saved" , "prosumers matched"]
+fields = ["test name" , "weights used" , "total weight saved" , "prosumers matched", "execution time (seconds)"]
 delimiter = " "
 
 
@@ -24,6 +24,7 @@ for line in testfile:
     row.append(re.findall(r'\d+', line[11])[0])
     row.append(re.findall(r"\d+\.*\d+", line[15])[0])
     row.append(re.findall(r'\d+', line[20])[0])
+    row.append(re.findall(r'\d+', line[6])[0])
 
     resultrows.append(row)
 
