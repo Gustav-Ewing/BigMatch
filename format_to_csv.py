@@ -21,9 +21,10 @@ for line in testfile:
     testname = delimiter.join(line[0:6])
     row.append(testname)
 
-    row.append(re.findall(r'\d+', line[11])[0])
-    row.append(re.findall(r"\d+\.*\d+", line[15])[0])
-    row.append(re.findall(r'\d+', line[20])[0])
+    print(line)
+    row.append(re.findall(r'\d+', line[12])[0])
+    row.append(re.findall(r"\d+\.*\d+", line[17])[0])
+    row.append(re.findall(r'\d+', line[23])[0])
     row.append(re.findall(r'\d+', line[6])[0])
 
     resultrows.append(row)

@@ -165,11 +165,11 @@ int main(int argc, char *argv[])
 	myData.weightsUsed = 0;
 	myData.neighborCount = 0; // simple init value to avoid undefined behavior
 	
-	cout << "list lengths" << endl;
-	cout << myData.prosumerList.size() << endl;
-	cout << myData.consumerList.size() << endl;
-	cout << myData.prosumerList[0] << endl;
-	cout << myData.consumerList[0] << endl;
+	//cout << "list lengths" << endl;
+	//cout << myData.prosumerList.size() << endl;
+	//cout << myData.consumerList.size() << endl;
+	//cout << myData.prosumerList[0] << endl;
+	//cout << myData.consumerList[0] << endl;
 	vector<tuple<int, int, double>> result;
 	if(myData.version){
 		cout << "running double greedy algorithm" << endl;
@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
 
 	double sum = 0;
 	int count = 0;
-	cout << "Is the collector vector empty: " << myData.prosumers.empty() << endl;
+	//cout << "Is the collector vector empty: " << myData.prosumers.empty() << endl;
 	while(!myData.prosumers.empty()){
 		tuple<int,int,float> match = myData.prosumers.back();
 		myData.prosumers.pop_back();
@@ -472,8 +472,11 @@ pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, i
 					list[1] = N[i];
 				}
 				else{
-					list[0] = N[i];
-					list[1] = household;
+					if(!consumers[N[i]]){
+						return make_pair(N[i], weight);
+					}else{
+						continue;
+					}
 				}
 				pythonOptimizer(2, list);
 				myData.weightsUsed++;
@@ -492,8 +495,11 @@ pair<int, float> next_edge_greedy_path(int household, vector<Edge> *tempgraph, i
 				list[1] = j;
 			}
 			else{
-				list[0] = j;
-				list[1] = household;
+				if(!consumers[j]){
+					return make_pair(j, weight);
+				}else{
+					return make_pair(-1, weight);
+				}
 			}
 			pythonOptimizer(2, list);
 			myData.weightsUsed++;
@@ -713,6 +719,39 @@ int precomputePython(char *fileName)
 		}
 
 
+
+
+
+		// Only for TEST
+
+		/* Initializes the neighborHood dictionary */
+		pName = PyUnicode_DecodeFSDefault(preComputeNeighborhoods);
+		/* Error checking of pName left out */
+
+		pModule = PyImport_Import(pName);
+		Py_DECREF(pName);
+		if (pModule != NULL)
+		{
+			pFunc = PyObject_GetAttrString(pModule, "start");
+			/* pFunc is a new reference */
+
+			if (pFunc && PyCallable_Check(pFunc))
+			{
+				PyObject_CallObject(pFunc, NULL);
+				cout << "Initialized neighborHood" << endl;
+			}
+			else{
+				return EXIT_FAILURE;
+			}
+			Py_XDECREF(pFunc);
+			Py_DECREF(pModule);
+			/* End of initialization */
+		}else{
+			return EXIT_FAILURE;
+		}
+
+		return precomputePythonNeighborhood(preComputeNeighborhoods, findNeighborhoods, fileName);
+
 	}else{
 
 		// the following code starts two global 2 objects on the python by calling 2 python functions
@@ -791,7 +830,7 @@ int precomputePython(char *fileName)
 				pValue = PyObject_CallObject(pFunc, pArgs);
 				myData.length = PyLong_AsLong(pValue);
 				Py_XDECREF(pValue);
-				cout << myData.length << endl;
+				//cout << myData.length << endl;
 				cout << "Initialized length" << endl;
 			}
 			else{
@@ -1021,7 +1060,8 @@ int pythonOptimizerPreComputed(const char *name, const char *function, int index
 // myData.neighbors only lazy deletes so only the first myData.neighborCount elements are actually valid at any time
 int pythonNeighborhood(int index)
 {
-	if(!myData.precompute){
+	bool test = true;
+	if(!myData.precompute || !test){
 		return pythonNeighborhoodOnline(neighborHood, findNeighborhood, index);
 	}else{
 		return pythonNeighborhoodPrecomputed(preComputeNeighborhoods, findNeighborhood, index);

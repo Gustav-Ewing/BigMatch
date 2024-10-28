@@ -76,7 +76,6 @@ def findNeighborhoods(theFile, prosumerSort, neighborSort):
 	for neighborhood in neighborhoods.values():
 		neighborhood.sort(reverse=order)
 
-	print(neighborhood)
 	return prosumerList, consumerList
 
 
