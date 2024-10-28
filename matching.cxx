@@ -718,40 +718,6 @@ int precomputePython(char *fileName)
 			return EXIT_FAILURE;
 		}
 
-
-
-
-
-		// Only for TEST
-
-		/* Initializes the neighborHood dictionary */
-		pName = PyUnicode_DecodeFSDefault(preComputeNeighborhoods);
-		/* Error checking of pName left out */
-
-		pModule = PyImport_Import(pName);
-		Py_DECREF(pName);
-		if (pModule != NULL)
-		{
-			pFunc = PyObject_GetAttrString(pModule, "start");
-			/* pFunc is a new reference */
-
-			if (pFunc && PyCallable_Check(pFunc))
-			{
-				PyObject_CallObject(pFunc, NULL);
-				cout << "Initialized neighborHood" << endl;
-			}
-			else{
-				return EXIT_FAILURE;
-			}
-			Py_XDECREF(pFunc);
-			Py_DECREF(pModule);
-			/* End of initialization */
-		}else{
-			return EXIT_FAILURE;
-		}
-
-		return precomputePythonNeighborhood(preComputeNeighborhoods, findNeighborhoods, fileName);
-
 	}else{
 
 		// the following code starts two global 2 objects on the python by calling 2 python functions
@@ -1060,8 +1026,7 @@ int pythonOptimizerPreComputed(const char *name, const char *function, int index
 // myData.neighbors only lazy deletes so only the first myData.neighborCount elements are actually valid at any time
 int pythonNeighborhood(int index)
 {
-	bool test = true;
-	if(!myData.precompute || !test){
+	if(!myData.precompute){
 		return pythonNeighborhoodOnline(neighborHood, findNeighborhood, index);
 	}else{
 		return pythonNeighborhoodPrecomputed(preComputeNeighborhoods, findNeighborhood, index);
