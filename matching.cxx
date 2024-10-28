@@ -248,6 +248,7 @@ int main(int argc, char *argv[])
 int greedyMatching(vector<int> prosumersList, vector<int> consumersList)
 {
 	size_t prosumerSize = prosumersList.size(); //equal to the amount of prosumers in vector prosumersList
+	//prosumerSize = 30;
 	size_t consumerSize = consumersList.size(); //equal to the amount of consumers in vector consumersList
 	bool available[myData.length];				//available consumers
 
@@ -270,7 +271,7 @@ int greedyMatching(vector<int> prosumersList, vector<int> consumersList)
 
 		// setting this as -10 for now so it is easier to see when the output is clearly false
 		// should change for 0 later
-		float currentBestWeight = -10;
+		float currentBestWeight = 0;
 		int currentBestIndex = -1;
 
 		/*
