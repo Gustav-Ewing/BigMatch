@@ -11,13 +11,15 @@
 #include <utility>
 #include <vector>
 
+#define SIZE 20
+
 using namespace std;
 
 using Weight = uint32_t;
 // using Graph = std::unordered_map<std::pair<int, int>, Weight>;
 
 using Pair = tuple<uint32_t, uint32_t, uint32_t>;
-using Pairing = vector<Pair>;
+using Pairing = vector<vector<Pair>>;
 
 struct pair_equal {
   bool operator()(const pair<int, int> &lhs, const pair<int, int> &rhs) const {
@@ -44,7 +46,8 @@ const static auto make_edge = [](int a, int b) {
 using Graph = unordered_map<std::pair<int, int>, Weight, pair_hash, pair_equal>;
 Pairing doubleGreedy(Graph graph);
 
-u_int32_t nextEdge(u_int32_t node, vector<u_int32_t> path, bool dist[]);
+u_int32_t nextEdge(u_int32_t node, vector<Pair> path, bool dist[],
+                   bool consumer[], bool producer[]);
 
 int main() {
   string filename = "graph.txt";
@@ -80,69 +83,114 @@ int main() {
   result.push_back(test);
   */
 
-  int counter = 0;
-  for (Pair element : result) {
-    cout << "Pair " << counter++ << " :" << "\n";
-    cout << "\t" << "First Node: " << "\t" << get<0>(element) << "\n";
-    cout << "\t" << "Second Node: " << "\t" << get<1>(element) << "\n";
-    cout << "\t" << "Weight: " << "\t" << get<2>(element) << "\n";
+  for (u_int32_t i = 1; i < result.size(); i++) {
+    int counter = 0;
+    for (Pair element : result[i]) {
+      cout << "Pair " << counter++ << " :" << "\n";
+      cout << "\t" << "First Node: " << "\t" << get<0>(element) << "\n";
+      cout << "\t" << "Second Node: " << "\t" << get<1>(element) << "\n";
+      cout << "\t" << "Weight: " << "\t" << get<2>(element) << "\n";
+    }
   }
-
   return 0;
 }
 
 Pairing doubleGreedy(Graph graph) {
   Pairing matching;
-  const u_int32_t size = 10; // manually set for now
+  // const u_int32_t size = 10; // manually set for now
+  //  swtich to using the graph arg instead
 
-  bool dist[size];
+  bool dist[SIZE];
   int counter = 0;
   // true here implies producer
-  for (bool &entry : producer) {
+  for (bool &entry : dist) {
     if (counter++ % 3 == 0) {
       entry = true;
+    } else {
+      entry = false;
     }
   }
 
-  bool producer[size];
-  for (bool &entry : producer) {
-    entry = true;
+  bool consumer[SIZE];
+  bool producer[SIZE];
+  for (u_int32_t i = 0; i < SIZE; i++) {
+    if (dist[i]) {
+      producer[i] = true;
+      consumer[i] = false;
+    } else {
+      producer[i] = false;
+      consumer[i] = true;
+    }
   }
 
-  bool consumer[size];
-  for (bool &entry : consumer) {
-    entry = true;
-  }
-
-  for (u_int32_t i = 0; i < size; i++) {
-    vector<u_int32_t> path; // init path
+  for (u_int32_t i = 0; i < SIZE; i++) {
+    vector<Pair> path; // init path
 
     // find available node
     if (!producer[i] || !dist[i]) {
       continue;
     }
 
-    path.push_back(i); // add to path
+    // path.push_back(i); // add to path
 
     // repeat for rest of path
     u_int32_t nextNode = i;
     u_int32_t originNode;
-    // fix this != 0 condition so it ends the loop properly
+    // fix this != 0 condition so it ends the loop properly (make sure no weight
+    // is ever 0 except when there is none)
     while (nextNode != 0) {
       originNode = nextNode;
-      nextNode = nextEdge(originNode, path, dist);
-      path.push_back(nextNode);
+      nextNode = nextEdge(originNode, path, dist, consumer, producer);
+      u_int32_t weight = 1; // tmp value change to real value later
+      Pair nextPair = make_tuple(originNode, nextNode, weight);
+      path.push_back(nextPair);
     }
+    matching.push_back(path);
   }
 
   return matching;
 }
 
-u_int32_t nextEdge(u_int32_t node, vector<u_int32_t> path, bool dist[]) {
-  bool producer = false;
+u_int32_t nextEdge(u_int32_t node, vector<Pair> path, bool dist[],
+                   bool consumer[], bool producer[]) {
+  bool nodeIsProducer = false;
   if (dist[node]) {
-    producer = true;
+    nodeIsProducer = true;
   }
+
+  vector<u_int32_t> neighbors;
+
+  if (nodeIsProducer) {
+    for (u_int32_t i = 0; i < SIZE; i++) {
+      if (consumer[i]) {
+        neighbors.push_back(i);
+      }
+    }
+  } else {
+    for (u_int32_t i = 0; i < SIZE; i++) {
+      if (producer[i]) {
+        neighbors.push_back(i);
+      }
+    }
+  }
+
+  u_int32_t highest = 0;
+  for (u_int32_t element : neighbors) {
+    highest = max(element, highest);
+  }
+
+  // sketchy might work or might not work as intended
+  if (highest != 0) {
+    if (nodeIsProducer) {
+      producer[node] = false;
+      consumer[highest] = false;
+    } else {
+      consumer[node] = false;
+      producer[highest] = false;
+    }
+  }
+
+  return highest;
 }
 
 // to test whether the graph was read in correctly
