@@ -10,12 +10,15 @@
 #include <unordered_map>
 #include <utility>
 
-#define SIZE 10000
-#define SPARSEFACTOR 97 // percent chance to not create make_edge
-#define SEED 1234       // Current seed for the string
+#define PROSUMERS 7000
+#define CONSUMERS PROSUMERS * 5
+#define SIZE PROSUMERS + (CONSUMERS)
+#define SPARSEFACTOR                                                           \
+  (10 * log(SIZE) / (SIZE)) // percent chance to not create make_edge
+#define SEED 1234           // Current seed for the string
 #define BETA                                                                   \
   2 // Beta value, determines the scaling of weights for a nodes edges
-#define MAXWEIGHT 100000 // Max allowed weight
+#define MAXWEIGHT 100 // Max allowed weight
 
 using namespace std;
 using Weight = uint32_t;
@@ -51,29 +54,31 @@ int main() {
   mt19937 gen2;
   gen.seed(SEED);
   gen2.seed(SEED);
-  std::uniform_int_distribution<> uniform_distrib(1, 100);
-  std::uniform_int_distribution<uint32_t> weight_distrib(1, MAXWEIGHT);
+  std::uniform_real_distribution<> uniform_distrib(0, 1);
+  std::poisson_distribution<uint32_t> weight_distrib((MAXWEIGHT) / 2);
   unordered_map<std::pair<int, int>, Weight, pair_hash, pair_equal> graph;
   // boost::unordered_map<
   //     std::pair<int, int>, Weight, pair_hash, pair_equal,
   //     boost::fast_pool_allocator<std::pair<const int, std::string>>>
   //     graph;
-  for (int i = 0; i < SIZE; i++) {
+  for (int i = 0; i < PROSUMERS; i++) {
     uint32_t weight_limit = MAXWEIGHT;
-    for (int j = 0; j < SIZE; j++) {
-
-      if (i == j || uniform_distrib(gen2) < SPARSEFACTOR) {
+    for (int j = 0; j < CONSUMERS; j++) {
+      if (uniform_distrib(gen2) > SPARSEFACTOR) {
         continue;
       }
 
       weight_distrib.param(
-          uniform_int_distribution<uint32_t>::param_type(1, weight_limit));
+          poisson_distribution<uint32_t>::param_type((weight_limit) / 2));
       uint32_t new_weight = weight_distrib(gen);
+      while (new_weight > weight_limit || new_weight == 0) {
+        new_weight = weight_distrib(gen);
+      }
       weight_limit = std::min(new_weight * BETA, weight_limit);
 
       graph[{i, j}] = new_weight;
     }
-    cout << "Node " << i << " out of " << SIZE
+    cout << "Node " << i << " out of " << PROSUMERS
          << " // Size of hash: " << graph.size() << "\t\r" << flush;
   }
 
@@ -85,7 +90,7 @@ int main() {
   string file = "graph.txt";
   ofstream stream; // To Write into a File, Use "ofstream"
   stream.open(file);
-  stream << SIZE << " " << SIZE << " " << graph.size() << "\n";
+  stream << PROSUMERS << " " << CONSUMERS << " " << graph.size() << "\n";
   for (const auto &[key, value] : graph) {
     stream << key.first << " " << key.second << " " << value << '\n';
 
