@@ -1,4 +1,5 @@
 
+#include <codecvt>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -11,13 +12,15 @@
 #include <utility>
 #include <vector>
 
-#define SIZE 20
-
+// #define SIZE 20
 using namespace std;
 
-using Weight = uint32_t;
-// using Graph = std::unordered_map<std::pair<int, int>, Weight>;
+u_int32_t graphSize = 0;
+u_int32_t nrProducers = 0;
+u_int32_t nrConsumers = 0;
+u_int32_t entries = 0;
 
+using Weight = uint32_t;
 using Pair = tuple<uint32_t, uint32_t, uint32_t>;
 using Pairing = vector<vector<Pair>>;
 
@@ -38,12 +41,14 @@ struct pair_hash {
     return hash;
   }
 };
+using Graph = unordered_map<std::pair<u_int32_t, u_int32_t>, Weight, pair_hash,
+                            pair_equal>;
+int test(Graph graph);
 
 const static auto make_edge = [](int a, int b) {
   return std::make_pair(std::min(a, b), std::max(a, b));
 };
 
-using Graph = unordered_map<std::pair<int, int>, Weight, pair_hash, pair_equal>;
 Pairing doubleGreedy(Graph graph);
 
 u_int32_t nextEdge(u_int32_t node, vector<Pair> path, bool dist[],
@@ -54,7 +59,20 @@ int main() {
   ifstream graphFile(filename);
   string inputstr;
 
-  unordered_map<std::pair<int, int>, Weight, pair_hash, pair_equal> graph;
+  Graph graph;
+  getline(graphFile, inputstr);
+  istringstream input;
+  input.str(inputstr);
+
+  string sRows, sColumns, sAmount;
+  getline(input, sRows, ' ');
+  getline(input, sColumns, ' ');
+  getline(input, sAmount, ' ');
+
+  nrProducers = stoul(sRows);
+  nrConsumers = stoul(sColumns);
+  entries = stoul(sAmount);
+  graphSize = nrProducers + nrConsumers;
 
   while (getline(graphFile, inputstr)) {
     istringstream input;
@@ -70,8 +88,8 @@ int main() {
     // cout << node1 << "\t" << node2 << "\t" << weight << "\n";
 
     graph[{stoul(node1), stoul(node2)}] = stoul(weight);
-    // test()
   }
+  // test(graph);
 
   Pairing result;
   result = doubleGreedy(graph);
@@ -97,10 +115,9 @@ int main() {
 
 Pairing doubleGreedy(Graph graph) {
   Pairing matching;
-  // const u_int32_t size = 10; // manually set for now
-  //  swtich to using the graph arg instead
 
-  bool dist[SIZE];
+  // make sure to remove and stop using this
+  bool dist[graphSize];
   int counter = 0;
   // true here implies producer
   for (bool &entry : dist) {
@@ -111,9 +128,9 @@ Pairing doubleGreedy(Graph graph) {
     }
   }
 
-  bool consumer[SIZE];
-  bool producer[SIZE];
-  for (u_int32_t i = 0; i < SIZE; i++) {
+  bool consumer[graphSize];
+  bool producer[graphSize];
+  for (u_int32_t i = 0; i < graphSize; i++) {
     if (dist[i]) {
       producer[i] = true;
       consumer[i] = false;
@@ -123,7 +140,7 @@ Pairing doubleGreedy(Graph graph) {
     }
   }
 
-  for (u_int32_t i = 0; i < SIZE; i++) {
+  for (u_int32_t i = 0; i < graphSize; i++) {
     vector<Pair> path; // init path
 
     // find available node
@@ -161,13 +178,13 @@ u_int32_t nextEdge(u_int32_t node, vector<Pair> path, bool dist[],
   vector<u_int32_t> neighbors;
 
   if (nodeIsProducer) {
-    for (u_int32_t i = 0; i < SIZE; i++) {
+    for (u_int32_t i = 0; i < graphSize; i++) {
       if (consumer[i]) {
         neighbors.push_back(i);
       }
     }
   } else {
-    for (u_int32_t i = 0; i < SIZE; i++) {
+    for (u_int32_t i = 0; i < graphSize; i++) {
       if (producer[i]) {
         neighbors.push_back(i);
       }
