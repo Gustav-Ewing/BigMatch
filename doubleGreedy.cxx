@@ -43,6 +43,9 @@ struct pair_hash {
 };
 using Graph = unordered_map<std::pair<u_int32_t, u_int32_t>, Weight, pair_hash,
                             pair_equal>;
+using Neighborhood = unordered_map<u_int32_t, pair<u_int32_t, u_int32_t>>;
+Neighborhood neighborhoods;
+
 int test(Graph graph);
 
 const static auto make_edge = [](int a, int b) {
@@ -51,7 +54,7 @@ const static auto make_edge = [](int a, int b) {
 
 Pairing doubleGreedy(Graph graph);
 
-u_int32_t nextEdge(u_int32_t node, vector<Pair> path, bool dist[],
+u_int32_t nextEdge(u_int32_t node, vector<Pair> path, bool typeNode,
                    bool consumer[], bool producer[]);
 
 int main() {
@@ -88,6 +91,13 @@ int main() {
     // cout << node1 << "\t" << node2 << "\t" << weight << "\n";
 
     graph[{stoul(node1), stoul(node2)}] = stoul(weight);
+
+    // trying a adjacency list approach
+    // first check if an enntry already exists
+    // if it does extract it and this node to that neighborhood and readd it
+
+    neighborhoods[stoul(node1)] = make_pair(stoul(node2), stoul(weight));
+    neighborhoods[stoul(node2)] = make_pair(stoul(node1), stoul(weight));
   }
   // test(graph);
 
@@ -116,35 +126,21 @@ int main() {
 Pairing doubleGreedy(Graph graph) {
   Pairing matching;
 
-  // make sure to remove and stop using this
-  bool dist[graphSize];
-  int counter = 0;
-  // true here implies producer
-  for (bool &entry : dist) {
-    if (counter++ % 3 == 0) {
-      entry = true;
-    } else {
-      entry = false;
-    }
+  // init and set all nodes as available
+  bool consumers[nrConsumers];
+  bool producers[nrProducers];
+  for (u_int32_t i = 0; i < nrConsumers; i++) {
+    consumers[i] = true;
+  }
+  for (u_int32_t i = 0; i < nrProducers; i++) {
+    producers[i] = true;
   }
 
-  bool consumer[graphSize];
-  bool producer[graphSize];
-  for (u_int32_t i = 0; i < graphSize; i++) {
-    if (dist[i]) {
-      producer[i] = true;
-      consumer[i] = false;
-    } else {
-      producer[i] = false;
-      consumer[i] = true;
-    }
-  }
-
-  for (u_int32_t i = 0; i < graphSize; i++) {
+  for (u_int32_t i = 0; i < nrProducers; i++) {
     vector<Pair> path; // init path
 
     // find available node
-    if (!producer[i] || !dist[i]) {
+    if (!producers[i]) {
       continue;
     }
 
@@ -153,11 +149,14 @@ Pairing doubleGreedy(Graph graph) {
     // repeat for rest of path
     u_int32_t nextNode = i;
     u_int32_t originNode;
+    bool typeNode = true;
+
     // fix this != 0 condition so it ends the loop properly (make sure no weight
     // is ever 0 except when there is none)
     while (nextNode != 0) {
       originNode = nextNode;
-      nextNode = nextEdge(originNode, path, dist, consumer, producer);
+      nextNode = nextEdge(originNode, path, typeNode, consumers, producers);
+      typeNode = !typeNode;
       u_int32_t weight = 1; // tmp value change to real value later
       Pair nextPair = make_tuple(originNode, nextNode, weight);
       path.push_back(nextPair);
@@ -168,24 +167,21 @@ Pairing doubleGreedy(Graph graph) {
   return matching;
 }
 
-u_int32_t nextEdge(u_int32_t node, vector<Pair> path, bool dist[],
-                   bool consumer[], bool producer[]) {
-  bool nodeIsProducer = false;
-  if (dist[node]) {
-    nodeIsProducer = true;
-  }
+u_int32_t nextEdge(u_int32_t node, vector<Pair> path, bool typeNode,
+                   bool consumers[], bool producers[]) {
+  vector<pair<u_int32_t, u_int32_t>> neighbors;
 
-  vector<u_int32_t> neighbors;
-
-  if (nodeIsProducer) {
+  // true implies a producer
+  if (typeNode) {
+    neighbors = neighborhoods[node];
     for (u_int32_t i = 0; i < graphSize; i++) {
-      if (consumer[i]) {
+      if (consumers[i]) {
         neighbors.push_back(i);
       }
     }
   } else {
     for (u_int32_t i = 0; i < graphSize; i++) {
-      if (producer[i]) {
+      if (producers[i]) {
         neighbors.push_back(i);
       }
     }
@@ -198,12 +194,12 @@ u_int32_t nextEdge(u_int32_t node, vector<Pair> path, bool dist[],
 
   // sketchy might work or might not work as intended
   if (highest != 0) {
-    if (nodeIsProducer) {
-      producer[node] = false;
-      consumer[highest] = false;
+    if (typeNode) {
+      producers[node] = false;
+      consumers[highest] = false;
     } else {
-      consumer[node] = false;
-      producer[highest] = false;
+      consumers[node] = false;
+      producers[highest] = false;
     }
   }
 
