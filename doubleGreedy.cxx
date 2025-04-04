@@ -143,7 +143,7 @@ int main() {
       summer += get<2>(element); // the weight to running total of weights
     }
   }
-  cout << '\n' << "The total weight is: " << summer << '\n';
+  cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
   return 0;
 }
 
