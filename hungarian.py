@@ -45,28 +45,32 @@ def hungarian():
     elif sys.argv[2] == "random2":
         assignments = []
         used_cons = []
+        dupes = 0
+        update_interval = max(1, matrixlines / 50)
+
         for p in range(matrixlines):
             while True:
-                processed = 0
-                update_interval = max(
-                    1, matrixlines // 100
-                )  # Print every ~1% of total elements
 
-                processed += 1
-                if processed % update_interval == 0 or processed == matrixlines:
-                    print(
-                        f"Processed {processed:,} out of {matrixlines:,} elements ({(processed / matrixlines) * 100:.0f}%)\r",
-                        end="",
-                        flush=True,
-                    )
-
-                rand = random.randint(0, matrixcols)
-                if rand in prosumer_edges[p] and rand not in used_cons:
+                rand = random.randint(0, matrixcols - 1)
+                if len(prosumer_edges[p]) == 0:
+                    break
+                elif rand in prosumer_edges[p] and rand not in used_cons:
                     used_cons.append(rand)
                     assignments.append((p, rand, pair_edge_weight[(p, rand)]))
                     break
+                else:
+                    dupes = dupes + 1
+
+            if (p + 1) % update_interval == 0 or p == matrixlines - 1:
+                print(
+                    f"Processed {p+1:,} out of {matrixlines:,} elements ({(p/ matrixlines) * 100:.0f}%)\r",
+                    end="",
+                    flush=True,
+                )
+                dupes = 0
 
         print("\n")
+
         max_weight = sum(val for _, _, val in assignments)
 
     elif sys.argv[2] == "random":
