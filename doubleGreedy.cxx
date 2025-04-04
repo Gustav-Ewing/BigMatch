@@ -130,15 +130,20 @@ int main() {
   result.clear();
   result.push_back(test);
   */
+
+  u_int64_t summer = 0;
   for (u_int32_t i = 1; i < result.size(); i++) {
+    cout << "Path " << i << " :" << "\n";
     int counter = 0;
     for (Pair element : result[i]) {
-      cout << "Pair " << counter++ << " :" << "\n";
-      cout << "\t" << "First Node: " << "\t" << get<0>(element) << "\n";
-      cout << "\t" << "Second Node: " << "\t" << get<1>(element) << "\n";
-      cout << "\t" << "Weight: " << "\t" << get<2>(element) << "\n";
+      cout << "\t" << "Pair " << counter++ << " :" << "\n";
+      cout << "\t\t" << "First Node: " << "\t" << get<0>(element) << "\n";
+      cout << "\t\t" << "Second Node: " << "\t" << get<1>(element) << "\n";
+      cout << "\t\t" << "Weight: " << "\t" << get<2>(element) << "\n";
+      summer += get<2>(element); // the weight to running total of weights
     }
   }
+  cout << '\n' << "The total weight is: " << summer << '\n';
   return 0;
 }
 
@@ -173,7 +178,10 @@ Pairing doubleGreedy(Graph graph) {
 
     // fix this != 0 condition so it ends the loop properly (make sure no weight
     // is ever 0 except when there is none)
-    while (nextNode != 0) {
+    // should be fine now but need to double check this
+    // also moved the check further down in the loop to make sure it doesnt add
+    // nodes with 0
+    while (true) {
       originNode = nextNode;
       edge = nextEdge(originNode, path, typeNode, consumers, producers);
       typeNode = !typeNode;
@@ -181,6 +189,9 @@ Pairing doubleGreedy(Graph graph) {
       u_int32_t weight = get<1>(edge);
       // u_int32_t weight = 1; // tmp value change to real value later
       Pair nextPair = make_tuple(originNode, nextNode, weight);
+      if (nextNode == 0) {
+        break;
+      }
       path.push_back(nextPair);
     }
     matching.push_back(path);
