@@ -1,21 +1,27 @@
 #include <algorithm>
 #include <boost/pool/pool_alloc.hpp>
 #include <boost/unordered_map.hpp>
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <ostream>
 #include <random>
+#include <regex>
+#include <string>
 #include <sys/types.h>
 #include <unordered_map>
 #include <utility>
 
-#define PROSUMERS 7000
+#define PROSUMERS 1000000
 #define CONSUMERS PROSUMERS * 5
 #define SIZE PROSUMERS + (CONSUMERS)
+#define EDGES_PER_CHUNK 10000000
 #define SPARSEFACTOR                                                           \
-  (10 * log(SIZE) / (SIZE)) // percent chance to not create make_edge
-#define SEED 1234           // Current seed for the string
+  (3 * log(SIZE) / (SIZE)) // percent chance to not create make_edge
+#define SEED 1234          // Current seed for the string
 #define BETA                                                                   \
   2 // Beta value, determines the scaling of weights for a nodes edges
 #define MAXWEIGHT 100 // Max allowed weight
@@ -44,27 +50,94 @@ struct pair_hash {
   }
 };
 
-const static auto make_edge = [](int a, int b) {
-  return std::make_pair(std::min(a, b), std::max(a, b));
-};
+static int remove_old_graphs() {
+  namespace fs = std::filesystem;
+
+  std::string directory = "./"; // Change to your target directory if needed
+  std::regex pattern("^graph.*\\.txt$");
+
+  try {
+    for (const auto &entry : fs::directory_iterator(directory)) {
+      if (fs::is_regular_file(entry.status())) {
+        std::string filename = entry.path().filename().string();
+        if (std::regex_match(filename, pattern)) {
+          std::cout << "Removing: " << entry.path() << '\n';
+          fs::remove(entry.path());
+        }
+      }
+    }
+  } catch (const fs::filesystem_error &e) {
+    std::cerr << "Filesystem error: " << e.what() << '\n';
+  } catch (const std::regex_error &e) {
+    std::cerr << "Regex error: " << e.what() << '\n';
+  }
+
+  return 0;
+}
+
+int insert_metadata(uint32_t num_of_edges) {
+  cout << '\n';
+  std::string filename = "graph0.txt";
+  std::string temp_filename = "temp_graph0.txt";
+
+  std::ifstream input_file(filename);
+  std::ofstream temp_file(temp_filename);
+
+  if (!input_file || !temp_file) {
+    std::cerr << "Error opening file.\n";
+    return 1;
+  }
+
+  // Write the new line first
+  temp_file << PROSUMERS << " " << CONSUMERS << " " << num_of_edges << "\n";
+  ;
+
+  // Copy the rest of the file
+  std::string line;
+  while (std::getline(input_file, line)) {
+    temp_file << line << '\n';
+  }
+
+  input_file.close();
+  temp_file.close();
+
+  // Replace the original file with the modified one
+  std::filesystem::rename(temp_filename, filename);
+
+  std::cout << "Line inserted at the top of " << filename << '\n';
+  return 0;
+}
 
 int main() {
+  remove_old_graphs();
   std::cout.imbue(std::locale("en_US.UTF-8")); // Use thousands separator
+
   mt19937 gen;
   mt19937 gen2;
+  mt19937 gen3;
   gen.seed(SEED);
   gen2.seed(SEED);
+  gen3.seed(SEED);
   std::uniform_real_distribution<> uniform_distrib(0, 1);
   std::poisson_distribution<uint32_t> weight_distrib((MAXWEIGHT) / 2);
+  std::binomial_distribution<> degree_dist(CONSUMERS, SPARSEFACTOR);
+  std::uniform_int_distribution<> consumer_dist(0, (CONSUMERS)-1);
+
   unordered_map<std::pair<int, int>, Weight, pair_hash, pair_equal> graph;
-  // boost::unordered_map<
-  //     std::pair<int, int>, Weight, pair_hash, pair_equal,
-  //     boost::fast_pool_allocator<std::pair<const int, std::string>>>
-  //     graph;
+  int chunk = 0;
+  uint32_t num_of_edges = 0;
+
   for (int i = 0; i < PROSUMERS; i++) {
+
+    int degree = degree_dist(gen3);
+    int producer_current_edges = 0;
+
     uint32_t weight_limit = MAXWEIGHT;
-    for (int j = 0; j < CONSUMERS; j++) {
-      if (uniform_distrib(gen2) > SPARSEFACTOR) {
+
+    while (producer_current_edges < degree) {
+
+      int consumer = consumer_dist(gen3);
+      if (graph.find({i, consumer}) != graph.end()) {
         continue;
       }
 
@@ -75,11 +148,32 @@ int main() {
         new_weight = weight_distrib(gen);
       }
       weight_limit = std::min(new_weight * BETA, weight_limit);
-
-      graph[{i, j}] = new_weight;
+      if (graph.find({i, consumer}) != graph.end()) {
+        continue;
+      }
+      graph[{i, consumer}] = new_weight;
+      producer_current_edges++;
     }
-    cout << "Node " << i << " out of " << PROSUMERS
-         << " // Size of hash: " << graph.size() << "\t\r" << flush;
+
+    if (graph.size() > EDGES_PER_CHUNK || i == PROSUMERS - 1) {
+      string file = "graph" + to_string(chunk) + ".txt";
+
+      ofstream stream; // To Write into a File, Use "ofstream"
+      stream.open(file);
+      for (const auto &[key, value] : graph) {
+        stream << key.first << " " << key.second << " " << value << '\n';
+
+        // Add '\n' character  ^^^^
+      }
+      stream.close();
+      num_of_edges += graph.size();
+      graph.clear();
+      chunk++;
+    }
+
+    cout << "Prosumer: " << i + 1 << " out of " << PROSUMERS
+         << " // Total edges: " << graph.size() + num_of_edges
+         << " // Number of chunks: " << chunk << "\t\r" << flush;
   }
 
   if (graph.find({0, 1}) != graph.end()) {
@@ -87,16 +181,7 @@ int main() {
     std::cout << '\n' << weight << '\n';
     cout << graph[{1, 0}] << '\n';
   }
-  string file = "graph.txt";
-  ofstream stream; // To Write into a File, Use "ofstream"
-  stream.open(file);
-  stream << PROSUMERS << " " << CONSUMERS << " " << graph.size() << "\n";
-  for (const auto &[key, value] : graph) {
-    stream << key.first << " " << key.second << " " << value << '\n';
-
-    // Add '\n' character  ^^^^
-  }
-  stream.close();
+  insert_metadata(num_of_edges);
 
   return 0;
 }
