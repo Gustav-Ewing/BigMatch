@@ -1,5 +1,3 @@
-
-#include <codecvt>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -13,7 +11,6 @@
 #include <vector>
 
 // #define SIZE 20
-using namespace std;
 
 u_int32_t graphSize = 0;
 u_int32_t nrProducers = 0;
@@ -21,55 +18,56 @@ u_int32_t nrConsumers = 0;
 u_int32_t entries = 0;
 
 using Weight = uint32_t;
-using Pair = tuple<uint32_t, uint32_t, uint32_t>;
-using Pairing = vector<vector<Pair>>;
+using Pair = std::tuple<uint32_t, uint32_t, uint32_t>;
+using Pairing = std::vector<std::vector<Pair>>;
 
 struct pair_equal {
-  bool operator()(const pair<int, int> &lhs, const pair<int, int> &rhs) const {
+  bool operator()(const std::pair<int, int> &lhs,
+                  const std::pair<int, int> &rhs) const {
     return (lhs.first == rhs.first && lhs.second == rhs.second) ||
            (lhs.first == rhs.second && lhs.second == rhs.first);
   }
 };
 
 struct pair_hash {
-  size_t operator()(const pair<int, int> &p) const {
-    uint64_t a = static_cast<uint32_t>(min(p.first, p.second));
-    uint64_t b = static_cast<uint32_t>(max(p.second, p.first));
+  size_t operator()(const std::pair<int, int> &p) const {
+    uint64_t a = static_cast<uint32_t>(std::min(p.first, p.second));
+    uint64_t b = static_cast<uint32_t>(std::max(p.second, p.first));
     u_int64_t hash = (a << 32) | (b);
     // cout << "a = " << p.first << " and b = " << p.second << " and hash is "
     // << hash << "\n";
     return hash;
   }
 };
-using Graph = unordered_map<std::pair<u_int32_t, u_int32_t>, Weight, pair_hash,
-                            pair_equal>;
-using Neighborhood =
-    unordered_map<u_int32_t, vector<pair<u_int32_t, u_int32_t>>>;
+using Edge = std::pair<u_int32_t, u_int32_t>;
+using Graph = std::unordered_map<std::pair<u_int32_t, u_int32_t>, Weight,
+                                 pair_hash, pair_equal>;
+using Neighborhood = std::unordered_map<u_int32_t, std::vector<Edge>>;
 Neighborhood neighborhoods;
 
+// namespace {
 int test(Graph graph);
+Pairing doubleGreedy(Graph graph);
+std::pair<u_int32_t, u_int32_t> nextEdge(u_int32_t node, std::vector<Pair> path,
+                                         bool typeNode, bool consumer[],
+                                         bool producer[]);
+//} // namespace
 
 const static auto make_edge = [](int a, int b) {
   return std::make_pair(std::min(a, b), std::max(a, b));
 };
 
-Pairing doubleGreedy(Graph graph);
-
-pair<u_int32_t, u_int32_t> nextEdge(u_int32_t node, vector<Pair> path,
-                                    bool typeNode, bool consumer[],
-                                    bool producer[]);
-
 int main() {
-  string filename = "graph.txt";
-  ifstream graphFile(filename);
-  string inputstr;
+  std::string filename = "graph.txt";
+  std::ifstream graphFile(filename);
+  std::string inputstr;
 
   Graph graph;
   getline(graphFile, inputstr);
-  istringstream input;
+  std::istringstream input;
   input.str(inputstr);
 
-  string sRows, sColumns, sAmount;
+  std::string sRows, sColumns, sAmount;
   getline(input, sRows, ' ');
   getline(input, sColumns, ' ');
   getline(input, sAmount, ' ');
@@ -82,13 +80,13 @@ int main() {
   // cout << "read metadata" << '\n';
 
   while (getline(graphFile, inputstr)) {
-    istringstream input;
+    std::istringstream input;
     input.str(inputstr);
     if (inputstr.empty()) {
       continue;
     }
 
-    string node1, node2, weight;
+    std::string node1, node2, weight;
     getline(input, node1, ' ');
     getline(input, node2, ' ');
     getline(input, weight, ' ');
@@ -104,18 +102,18 @@ int main() {
     u_int32_t consumer = stoul(node2);
     u_int32_t edgeWeight = stoul(weight);
 
-    vector<pair<u_int32_t, u_int32_t>> tmp;
-    if (neighborhoods.count(producer)) {
+    std::vector<Edge> tmp;
+    if (neighborhoods.count(producer) != 0u) {
       tmp = neighborhoods[producer];
     }
-    tmp.push_back(make_pair(consumer, edgeWeight));
+    tmp.emplace_back(consumer, edgeWeight);
     neighborhoods[producer] = tmp;
 
     tmp.clear();
-    if (neighborhoods.count(consumer)) {
+    if (neighborhoods.count(consumer) != 0u) {
       tmp = neighborhoods[consumer];
     }
-    tmp.push_back(make_pair(producer, edgeWeight));
+    tmp.emplace_back(producer, edgeWeight);
     neighborhoods[consumer] = tmp;
   }
   // test(graph);
@@ -133,17 +131,19 @@ int main() {
 
   u_int64_t summer = 0;
   for (u_int32_t i = 1; i < result.size(); i++) {
-    cout << "Path " << i << " :" << "\n";
+    std::cout << "Path " << i << " :" << "\n";
     int counter = 0;
     for (Pair element : result[i]) {
-      cout << "\t" << "Pair " << counter++ << " :" << "\n";
-      cout << "\t\t" << "First Node: " << "\t" << get<0>(element) << "\n";
-      cout << "\t\t" << "Second Node: " << "\t" << get<1>(element) << "\n";
-      cout << "\t\t" << "Weight: " << "\t" << get<2>(element) << "\n";
-      summer += get<2>(element); // the weight to running total of weights
+      std::cout << "\t" << "Pair " << counter++ << " :" << "\n";
+      std::cout << "\t\t" << "First Node: " << "\t" << std::get<0>(element)
+                << "\n";
+      std::cout << "\t\t" << "Second Node: " << "\t" << std::get<1>(element)
+                << "\n";
+      std::cout << "\t\t" << "Weight: " << "\t" << std::get<2>(element) << "\n";
+      summer += std::get<2>(element); // the weight to running total of weights
     }
   }
-  cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
+  std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
   return 0;
 }
 
@@ -161,7 +161,7 @@ Pairing doubleGreedy(Graph graph) {
   }
 
   for (u_int32_t i = 0; i < nrProducers; i++) {
-    vector<Pair> path; // init path
+    std::vector<Pair> path; // init path
 
     // find available node
     if (!producers[i]) {
@@ -173,7 +173,7 @@ Pairing doubleGreedy(Graph graph) {
     // repeat for rest of path
     u_int32_t nextNode = i;
     u_int32_t originNode;
-    pair<u_int32_t, u_int32_t> edge;
+    std::pair<u_int32_t, u_int32_t> edge;
     bool typeNode = true;
 
     // fix this != 0 condition so it ends the loop properly (make sure no weight
@@ -185,10 +185,10 @@ Pairing doubleGreedy(Graph graph) {
       originNode = nextNode;
       edge = nextEdge(originNode, path, typeNode, consumers, producers);
       typeNode = !typeNode;
-      nextNode = get<0>(edge);
-      u_int32_t weight = get<1>(edge);
+      nextNode = std::get<0>(edge);
+      u_int32_t weight = std::get<1>(edge);
       // u_int32_t weight = 1; // tmp value change to real value later
-      Pair nextPair = make_tuple(originNode, nextNode, weight);
+      Pair nextPair = std::make_tuple(originNode, nextNode, weight);
       if (nextNode == 0) {
         break;
       }
@@ -200,20 +200,19 @@ Pairing doubleGreedy(Graph graph) {
   return matching;
 }
 
-pair<u_int32_t, u_int32_t> nextEdge(u_int32_t node, vector<Pair> path,
-                                    bool typeNode, bool consumers[],
-                                    bool producers[]) {
-  vector<pair<u_int32_t, u_int32_t>> neighbors;
+Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
+              bool consumers[], bool producers[]) {
+  std::vector<std::pair<u_int32_t, u_int32_t>> neighbors;
 
   // cout << "Edging" << '\n';
   //  check whether the neighbors are available
-  for (pair<u_int32_t, u_int32_t> neighbor : neighborhoods[node]) {
+  for (std::pair<u_int32_t, u_int32_t> neighbor : neighborhoods[node]) {
     if (typeNode) {
-      if (consumers[get<0>(neighbor)]) {
+      if (consumers[std::get<0>(neighbor)]) {
         neighbors.push_back(neighbor);
       }
     } else {
-      if (producers[get<0>(neighbor)]) {
+      if (producers[std::get<0>(neighbor)]) {
         neighbors.push_back(neighbor);
       }
     }
@@ -223,9 +222,9 @@ pair<u_int32_t, u_int32_t> nextEdge(u_int32_t node, vector<Pair> path,
 
   u_int32_t highestIndex = 0;
   u_int32_t highestWeight = 0;
-  for (pair<u_int32_t, u_int32_t> neighbor : neighbors) {
-    highestIndex = max(get<0>(neighbor), highestIndex);
-    highestWeight = max(get<1>(neighbor), highestWeight);
+  for (std::pair<u_int32_t, u_int32_t> neighbor : neighbors) {
+    highestIndex = std::max(std::get<0>(neighbor), highestIndex);
+    highestWeight = std::max(std::get<1>(neighbor), highestWeight);
   }
 
   // cout << "Finding best" << '\n';
@@ -243,13 +242,13 @@ pair<u_int32_t, u_int32_t> nextEdge(u_int32_t node, vector<Pair> path,
 
   // cout << "Updating availability" << '\n';
 
-  return make_pair(highestIndex, highestWeight);
+  return std::make_pair(highestIndex, highestWeight);
 }
 
 // to test whether the graph was read in correctly
 int test(Graph graph) {
-  string file = "graphtest.txt";
-  ofstream stream; // To Write into a File, Use "ofstream"
+  std::string file = "graphtest.txt";
+  std::ofstream stream; // To Write into a File, Use "ofstream"
   stream.open(file);
   for (const auto &[key, value] : graph) {
     stream << key.first << " " << key.second << " " << value << '\n';
