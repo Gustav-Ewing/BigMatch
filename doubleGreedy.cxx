@@ -46,6 +46,7 @@ using Neighborhood = std::unordered_map<u_int32_t, std::vector<Edge>>;
 Neighborhood neighborhoods;
 
 // namespace {
+std::vector<Pair> greedy(Graph graph);
 int test(Graph graph);
 Pairing doubleGreedy(Graph graph);
 std::pair<u_int32_t, u_int32_t> nextEdge(u_int32_t node, std::vector<Pair> path,
@@ -119,7 +120,10 @@ int main() {
   // test(graph);
   // cout << "Matching" << '\n';
   Pairing result;
+  std::vector<Pair> resultNormal;
+
   result = doubleGreedy(graph);
+  // resultNormal = greedy(graph);
 
   // cout << "Finished Matching" << '\n';
   /*
@@ -129,6 +133,22 @@ int main() {
   result.push_back(test);
   */
 
+  /*
+  u_int64_t summer = 0;
+  int counter = 0;
+  for (Pair element : resultNormal) {
+    std::cout << "\t" << "Pair " << counter++ << " :" << "\n";
+    std::cout << "\t\t" << "First Node: " << "\t" << std::get<0>(element)
+              << "\n";
+    std::cout << "\t\t" << "Second Node: " << "\t" << std::get<1>(element)
+              << "\n";
+    std::cout << "\t\t" << "Weight: " << "\t" << std::get<2>(element) << "\n";
+    summer += std::get<2>(element); // the weight to running total of weights
+  }
+  std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
+  */
+
+  ///*
   u_int64_t summer = 0;
   for (u_int32_t i = 1; i < result.size(); i++) {
     std::cout << "Path " << i << " :" << "\n";
@@ -144,7 +164,47 @@ int main() {
     }
   }
   std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
+  //*/
   return 0;
+}
+
+std::vector<Pair> greedy(Graph graph) {
+  std::vector<Pair> matching;
+
+  // init and set all nodes as available
+  bool consumers[nrConsumers];
+  bool producers[nrProducers];
+  for (u_int32_t i = 0; i < nrConsumers; i++) {
+    consumers[i] = true;
+  }
+  for (u_int32_t i = 0; i < nrProducers; i++) {
+    producers[i] = true;
+  }
+
+  std::vector<std::pair<u_int32_t, u_int32_t>> neighbors;
+  for (u_int32_t i = 1; i < nrProducers + 1; i++) {
+    if (!producers[i]) {
+      continue;
+    }
+    neighbors = neighborhoods[i];
+    u_int32_t highestWeight = 0;
+    u_int32_t highestIndex = 0;
+    for (std::pair<u_int32_t, u_int32_t> neighbor : neighbors) {
+      // std::cout << neighbor.second << '\n';
+      if (neighbor.second > highestWeight) {
+        highestIndex = neighbor.first;
+        highestWeight = neighbor.second;
+      }
+    }
+    if (highestIndex == 0) {
+      continue;
+    }
+    // break;
+    matching.emplace_back(i, highestIndex, highestWeight);
+    producers[i] = false;
+    consumers[highestIndex] = false;
+  }
+  return matching;
 }
 
 Pairing doubleGreedy(Graph graph) {
