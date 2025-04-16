@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -59,7 +60,13 @@ const static auto make_edge = [](int a, int b) {
   return std::make_pair(std::min(a, b), std::max(a, b));
 };
 
-int main() {
+int main(int argc, char *argv[]) {
+  bool useDouble = false;
+  if (argc > 1) {
+    if (strcmp(argv[1], "double") == 0) {
+      useDouble = true;
+    }
+  }
   std::string filename = "graph0.txt";
   std::ifstream graphFile(filename);
   std::string inputstr;
@@ -124,9 +131,11 @@ int main() {
   Pairing result;
   std::vector<Pair> resultNormal;
 
-  // result = doubleGreedy(graph);
-  resultNormal = greedy(graph);
-
+  if (useDouble) {
+    result = doubleGreedy(graph);
+  } else {
+    resultNormal = greedy(graph);
+  }
   std::cout << "Finished Matching" << '\n';
   /*
   //testcode for the print below
@@ -135,27 +144,11 @@ int main() {
   result.push_back(test);
   */
 
-  ///*
-  u_int64_t summer = 0;
-  int counter = 0;
-  for (Pair element : resultNormal) {
-    std::cout << "\t" << "Pair " << counter++ << " :" << "\n";
-    std::cout << "\t\t" << "First Node: " << "\t" << std::get<0>(element)
-              << "\n";
-    std::cout << "\t\t" << "Second Node: " << "\t" << std::get<1>(element)
-              << "\n";
-    std::cout << "\t\t" << "Weight: " << "\t" << std::get<2>(element) << "\n";
-    summer += std::get<2>(element); // the weight to running total of weights
-  }
-  std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
-  //*/
+  if (!useDouble) {
 
-  /*
-  u_int64_t summer = 0;
-  for (u_int32_t i = 1; i < result.size(); i++) {
-    std::cout << "Path " << i << " :" << "\n";
+    u_int64_t summer = 0;
     int counter = 0;
-    for (Pair element : result[i]) {
+    for (Pair element : resultNormal) {
       std::cout << "\t" << "Pair " << counter++ << " :" << "\n";
       std::cout << "\t\t" << "First Node: " << "\t" << std::get<0>(element)
                 << "\n";
@@ -164,9 +157,26 @@ int main() {
       std::cout << "\t\t" << "Weight: " << "\t" << std::get<2>(element) << "\n";
       summer += std::get<2>(element); // the weight to running total of weights
     }
+    std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
+  } else {
+    u_int64_t summer = 0;
+    for (u_int32_t i = 1; i < result.size(); i++) {
+      std::cout << "Path " << i << " :" << "\n";
+      int counter = 0;
+      for (Pair element : result[i]) {
+        std::cout << "\t" << "Pair " << counter++ << " :" << "\n";
+        std::cout << "\t\t" << "First Node: " << "\t" << std::get<0>(element)
+                  << "\n";
+        std::cout << "\t\t" << "Second Node: " << "\t" << std::get<1>(element)
+                  << "\n";
+        std::cout << "\t\t" << "Weight: " << "\t" << std::get<2>(element)
+                  << "\n";
+        summer +=
+            std::get<2>(element); // the weight to running total of weights
+      }
+    }
+    std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
   }
-  std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
-  */
   return 0;
 }
 
