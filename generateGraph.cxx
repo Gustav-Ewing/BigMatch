@@ -15,8 +15,8 @@
 #include <unordered_map>
 #include <utility>
 
-#define PROSUMERS 10
-#define CONSUMERS 10
+#define PROSUMERS 1000000
+#define CONSUMERS PROSUMERS * 5
 #define SIZE PROSUMERS + (CONSUMERS)
 #define EDGES_PER_CHUNK 10000000 // 10 000 000 is around 165MB
 #define SPARSEFACTOR                                                           \

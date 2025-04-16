@@ -60,35 +60,18 @@ const static auto make_edge = [](int a, int b) {
   return std::make_pair(std::min(a, b), std::max(a, b));
 };
 
-int main(int argc, char *argv[]) {
-  bool useDouble = false;
-  if (argc > 1) {
-    if (strcmp(argv[1], "double") == 0) {
-      useDouble = true;
-    }
-  }
-  std::string filename = "graph0.txt";
+int readShard(u_int32_t shardNumber) {
+  std::string filename = "graph" + std::to_string(shardNumber) + ".txt";
   std::ifstream graphFile(filename);
   std::string inputstr;
 
   Graph graph;
   getline(graphFile, inputstr);
-  std::istringstream input;
-  input.str(inputstr);
-
-  std::string sRows, sColumns, sAmount;
-  getline(input, sRows, ' ');
-  getline(input, sColumns, ' ');
-  getline(input, sAmount, ' ');
-
-  nrProducers = stoul(sRows);
-  nrConsumers = stoul(sColumns);
-  entries = stoul(sAmount);
-  graphSize = nrProducers + nrConsumers;
-
-  // cout << "read metadata" << '\n';
+  // this line only contains metadata we should already know
+  // therefore no need to process
 
   while (getline(graphFile, inputstr)) {
+    // std::cout << inputstr << '\n';
     std::istringstream input;
     input.str(inputstr);
     if (inputstr.empty()) {
@@ -125,6 +108,40 @@ int main(int argc, char *argv[]) {
     tmp.emplace_back(producer, edgeWeight);
     consumerNeighborhoods[consumer] = tmp;
   }
+  return 0;
+}
+
+int main(int argc, char *argv[]) {
+  bool useDouble = false;
+  if (argc > 1) {
+    if (strcmp(argv[1], "double") == 0) {
+      useDouble = true;
+    }
+  }
+
+  std::string filename = "graph" + std::to_string(0) + ".txt";
+  std::ifstream graphFile(filename);
+  std::string inputstr;
+
+  Graph graph;
+  getline(graphFile, inputstr);
+  std::istringstream input;
+  input.str(inputstr);
+
+  std::string sRows, sColumns, sAmount;
+  getline(input, sRows, ' ');
+  getline(input, sColumns, ' ');
+  getline(input, sAmount, ' ');
+
+  // could increment these by one inorder to not have to do weirdness in the
+  // loops later on
+  nrProducers = stoul(sRows);
+  nrConsumers = stoul(sColumns);
+  entries = stoul(sAmount);
+  graphSize = nrProducers + nrConsumers;
+
+  std::cout << "read metadata" << '\n';
+
   // test(graph);
 
   std::cout << "Matching" << '\n';
@@ -149,14 +166,18 @@ int main(int argc, char *argv[]) {
     u_int64_t summer = 0;
     int counter = 0;
     for (Pair element : resultNormal) {
-      std::cout << "\t" << "Pair " << counter++ << " :" << "\n";
-      std::cout << "\t\t" << "First Node: " << "\t" << std::get<0>(element)
-                << "\n";
-      std::cout << "\t\t" << "Second Node: " << "\t" << std::get<1>(element)
-                << "\n";
-      std::cout << "\t\t" << "Weight: " << "\t" << std::get<2>(element) << "\n";
+      if (false) {
+        std::cout << "\t" << "Pair " << counter++ << " :" << "\n";
+        std::cout << "\t\t" << "First Node: " << "\t" << std::get<0>(element)
+                  << "\n";
+        std::cout << "\t\t" << "Second Node: " << "\t" << std::get<1>(element)
+                  << "\n";
+        std::cout << "\t\t" << "Weight: " << "\t" << std::get<2>(element)
+                  << "\n";
+      }
       summer += std::get<2>(element); // the weight to running total of weights
     }
+    std::cout << '\n' << "The number pairs is: " << resultNormal.size();
     std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
   } else {
     u_int64_t summer = 0;
@@ -193,10 +214,22 @@ std::vector<Pair> greedy(Graph graph) {
     producers[i] = true;
   }
 
+  // load Shard 0 before starting
+  u_int32_t loadedShard = 0;
+  std::cout << "loading shard: " << loadedShard << '\n';
+  readShard(loadedShard);
+  std::cout << "loaded shard: " << loadedShard << '\n';
+
   std::vector<std::pair<u_int32_t, u_int32_t>> neighbors;
   for (u_int32_t i = 1; i < nrProducers + 1; i++) {
     if (!producers[i]) {
       continue;
+    }
+    std::cout << "producer: " << i << '\r';
+    if (producerNeighborhoods.count(i) == 0) {
+      loadedShard++;
+      readShard(loadedShard);
+      std::cout << "loaded shard: " << loadedShard << '\n';
     }
     neighbors = producerNeighborhoods[i];
     u_int32_t highestWeight = 0;
@@ -250,11 +283,10 @@ Pairing doubleGreedy(Graph graph) {
     std::pair<u_int32_t, u_int32_t> edge;
     bool typeNode = true;
 
-    // fix this != 0 condition so it ends the loop properly (make sure no weight
-    // is ever 0 except when there is none)
-    // should be fine now but need to double check this
-    // also moved the check further down in the loop to make sure it doesnt add
-    // nodes with 0
+    // fix this != 0 condition so it ends the loop properly (make sure no
+    // weight is ever 0 except when there is none) should be fine now but need
+    // to double check this also moved the check further down in the loop to
+    // make sure it doesnt add nodes with 0
     while (true) {
       originNode = nextNode;
       edge = nextEdge(originNode, path, typeNode, consumers, producers);
