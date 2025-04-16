@@ -59,7 +59,7 @@ const static auto make_edge = [](int a, int b) {
 };
 
 int main() {
-  std::string filename = "graph.txt";
+  std::string filename = "graph0.txt";
   std::ifstream graphFile(filename);
   std::string inputstr;
 
@@ -122,10 +122,10 @@ int main() {
   Pairing result;
   std::vector<Pair> resultNormal;
 
-  result = doubleGreedy(graph);
-  // resultNormal = greedy(graph);
+  // result = doubleGreedy(graph);
+  resultNormal = greedy(graph);
 
-  // cout << "Finished Matching" << '\n';
+  std::cout << "Finished Matching" << '\n';
   /*
   //testcode for the print below
   Pair test = make_tuple(1, 2, 10);
@@ -133,7 +133,7 @@ int main() {
   result.push_back(test);
   */
 
-  /*
+  ///*
   u_int64_t summer = 0;
   int counter = 0;
   for (Pair element : resultNormal) {
@@ -146,9 +146,9 @@ int main() {
     summer += std::get<2>(element); // the weight to running total of weights
   }
   std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
-  */
+  //*/
 
-  ///*
+  /*
   u_int64_t summer = 0;
   for (u_int32_t i = 1; i < result.size(); i++) {
     std::cout << "Path " << i << " :" << "\n";
@@ -164,7 +164,7 @@ int main() {
     }
   }
   std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
-  //*/
+  */
   return 0;
 }
 
