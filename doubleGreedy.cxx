@@ -43,7 +43,8 @@ using Edge = std::pair<u_int32_t, u_int32_t>;
 using Graph = std::unordered_map<std::pair<u_int32_t, u_int32_t>, Weight,
                                  pair_hash, pair_equal>;
 using Neighborhood = std::unordered_map<u_int32_t, std::vector<Edge>>;
-Neighborhood neighborhoods;
+Neighborhood producerNeighborhoods;
+Neighborhood consumerNeighborhoods;
 
 // namespace {
 std::vector<Pair> greedy(Graph graph);
@@ -99,26 +100,27 @@ int main() {
     // first check if an enntry already exists
     // if it does extract it and this node to that neighborhood and read it
 
-    u_int32_t producer = stoul(node1);
-    u_int32_t consumer = stoul(node2);
+    u_int32_t producer = 1 + stoul(node1);
+    u_int32_t consumer = 1 + stoul(node2);
     u_int32_t edgeWeight = stoul(weight);
 
     std::vector<Edge> tmp;
-    if (neighborhoods.count(producer) != 0u) {
-      tmp = neighborhoods[producer];
+    if (producerNeighborhoods.count(producer) != 0u) {
+      tmp = producerNeighborhoods[producer];
     }
     tmp.emplace_back(consumer, edgeWeight);
-    neighborhoods[producer] = tmp;
+    producerNeighborhoods[producer] = tmp;
 
     tmp.clear();
-    if (neighborhoods.count(consumer) != 0u) {
-      tmp = neighborhoods[consumer];
+    if (consumerNeighborhoods.count(consumer) != 0u) {
+      tmp = consumerNeighborhoods[consumer];
     }
     tmp.emplace_back(producer, edgeWeight);
-    neighborhoods[consumer] = tmp;
+    consumerNeighborhoods[consumer] = tmp;
   }
   // test(graph);
-  // cout << "Matching" << '\n';
+
+  std::cout << "Matching" << '\n';
   Pairing result;
   std::vector<Pair> resultNormal;
 
@@ -174,10 +176,10 @@ std::vector<Pair> greedy(Graph graph) {
   // init and set all nodes as available
   bool consumers[nrConsumers];
   bool producers[nrProducers];
-  for (u_int32_t i = 0; i < nrConsumers; i++) {
+  for (u_int32_t i = 1; i < nrConsumers + 1; i++) {
     consumers[i] = true;
   }
-  for (u_int32_t i = 0; i < nrProducers; i++) {
+  for (u_int32_t i = 1; i < nrProducers + 1; i++) {
     producers[i] = true;
   }
 
@@ -186,10 +188,13 @@ std::vector<Pair> greedy(Graph graph) {
     if (!producers[i]) {
       continue;
     }
-    neighbors = neighborhoods[i];
+    neighbors = producerNeighborhoods[i];
     u_int32_t highestWeight = 0;
     u_int32_t highestIndex = 0;
     for (std::pair<u_int32_t, u_int32_t> neighbor : neighbors) {
+      if (!consumers[neighbor.first]) {
+        continue;
+      }
       // std::cout << neighbor.second << '\n';
       if (neighbor.second > highestWeight) {
         highestIndex = neighbor.first;
@@ -199,7 +204,6 @@ std::vector<Pair> greedy(Graph graph) {
     if (highestIndex == 0) {
       continue;
     }
-    // break;
     matching.emplace_back(i, highestIndex, highestWeight);
     producers[i] = false;
     consumers[highestIndex] = false;
@@ -266,6 +270,23 @@ Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
 
   // cout << "Edging" << '\n';
   //  check whether the neighbors are available
+  if (typeNode) {
+    for (std::pair<u_int32_t, u_int32_t> neighbor :
+         producerNeighborhoods[node]) {
+      if (consumers[std::get<0>(neighbor)]) {
+        neighbors.push_back(neighbor);
+      }
+    }
+  } else {
+    for (std::pair<u_int32_t, u_int32_t> neighbor :
+         consumerNeighborhoods[node]) {
+      if (producers[std::get<0>(neighbor)]) {
+        neighbors.push_back(neighbor);
+      }
+    }
+  }
+
+  /*
   for (std::pair<u_int32_t, u_int32_t> neighbor : neighborhoods[node]) {
     if (typeNode) {
       if (consumers[std::get<0>(neighbor)]) {
@@ -277,7 +298,7 @@ Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
       }
     }
   }
-
+  */
   // cout << "Grabbed neighbors" << '\n';
 
   u_int32_t highestIndex = 0;
