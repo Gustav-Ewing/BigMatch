@@ -1,3 +1,4 @@
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -8,6 +9,7 @@
 #include <sys/types.h>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -51,10 +53,17 @@ Neighborhood consumerNeighborhoods;
 std::vector<Pair> greedy(Graph graph);
 int test(Graph graph);
 Pairing doubleGreedy(Graph graph);
-std::pair<u_int32_t, u_int32_t> nextEdge(u_int32_t node, std::vector<Pair> path,
-                                         bool typeNode, bool consumer[],
-                                         bool producer[]);
-//} // namespace
+
+Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
+              bool consumers[], bool producers[],
+              std::unordered_set<u_int32_t> consumerInPath,
+              std::unordered_set<u_int32_t> producerInPath);
+
+// std::pair<u_int32_t, u_int32_t> nextEdge(u_int32_t node, std::vector<Pair>
+// path,
+//                                          bool typeNode, bool consumer[],
+//                                          bool producer[]);
+// } // namespace
 
 const static auto make_edge = [](int a, int b) {
   return std::make_pair(std::min(a, b), std::max(a, b));
@@ -85,6 +94,7 @@ int readShard(u_int32_t shardNumber) {
     // cout << node1 << "\t" << node2 << "\t" << weight << "\n";
 
     graph[{stoul(node1), stoul(node2)}] = stoul(weight);
+    // this isnt used anywhere as far as I remember
 
     // trying a adjacency list approach
     // first check if an enntry already exists
@@ -204,7 +214,8 @@ int main(int argc, char *argv[]) {
 std::vector<Pair> greedy(Graph graph) {
   std::vector<Pair> matching;
 
-  // init and set all nodes as available
+  // this approach is ugly but havent seen any good options
+  //  init and set all nodes as available
   bool consumers[nrConsumers];
   bool producers[nrProducers];
   for (u_int32_t i = 1; i < nrConsumers + 1; i++) {
@@ -257,6 +268,8 @@ std::vector<Pair> greedy(Graph graph) {
 Pairing doubleGreedy(Graph graph) {
   Pairing matching;
 
+  readShard(0);
+
   // init and set all nodes as available
   bool consumers[nrConsumers];
   bool producers[nrProducers];
@@ -283,22 +296,39 @@ Pairing doubleGreedy(Graph graph) {
     std::pair<u_int32_t, u_int32_t> edge;
     bool typeNode = true;
 
+    std::unordered_set<u_int32_t> producerInPath;
+    std::unordered_set<u_int32_t> consumerInPath;
+
     // fix this != 0 condition so it ends the loop properly (make sure no
     // weight is ever 0 except when there is none) should be fine now but need
     // to double check this also moved the check further down in the loop to
     // make sure it doesnt add nodes with 0
     while (true) {
       originNode = nextNode;
-      edge = nextEdge(originNode, path, typeNode, consumers, producers);
+      edge = nextEdge(originNode, path, typeNode, consumers, producers,
+                      consumerInPath, producerInPath);
       typeNode = !typeNode;
       nextNode = std::get<0>(edge);
+      if (typeNode) {
+        consumerInPath.insert(nextNode);
+      } else {
+        producerInPath.insert(nextNode);
+      }
+
       u_int32_t weight = std::get<1>(edge);
       // u_int32_t weight = 1; // tmp value change to real value later
       Pair nextPair = std::make_tuple(originNode, nextNode, weight);
       if (nextNode == 0) {
         break;
       }
-      path.push_back(nextPair);
+      // add only the edges that were found from a producer
+      // this is not strictly correct but works for now
+      // it will be slightly lower than what it should be for double
+      // extra sketchy because typenode has now been fliped for the next
+      // iteration so -> !typenode
+      if (!typeNode) {
+        path.push_back(nextPair);
+      }
     }
     matching.push_back(path);
   }
@@ -307,7 +337,9 @@ Pairing doubleGreedy(Graph graph) {
 }
 
 Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
-              bool consumers[], bool producers[]) {
+              bool consumers[], bool producers[],
+              std::unordered_set<u_int32_t> consumerInPath,
+              std::unordered_set<u_int32_t> producerInPath) {
   std::vector<std::pair<u_int32_t, u_int32_t>> neighbors;
 
   // cout << "Edging" << '\n';
@@ -315,6 +347,10 @@ Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
   if (typeNode) {
     for (std::pair<u_int32_t, u_int32_t> neighbor :
          producerNeighborhoods[node]) {
+      if (consumerInPath.count(neighbor.first) > 0) {
+        continue;
+        // consumer already in path
+      }
       if (consumers[std::get<0>(neighbor)]) {
         neighbors.push_back(neighbor);
       }
@@ -322,6 +358,10 @@ Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
   } else {
     for (std::pair<u_int32_t, u_int32_t> neighbor :
          consumerNeighborhoods[node]) {
+      if (producerInPath.count(neighbor.first) > 0) {
+        continue;
+        // proucer already in path
+      }
       if (producers[std::get<0>(neighbor)]) {
         neighbors.push_back(neighbor);
       }
