@@ -49,10 +49,45 @@ using Neighborhood = std::unordered_map<u_int32_t, std::vector<Edge>>;
 Neighborhood producerNeighborhoods;
 Neighborhood consumerNeighborhoods;
 
+class ShardMap {
+  std::vector<Neighborhood> producerShards;
+  std::vector<Neighborhood> consumerShards;
+  u_int32_t shardCount;
+
+public:
+  explicit ShardMap(u_int32_t shardCount) : shardCount(shardCount) {}
+
+  // make sure to verify that this creates distinct maps
+  void initalize() {
+    for (u_int32_t i = 0; i < this->shardCount; i++) {
+      Neighborhood prod;
+      Neighborhood cons;
+      producerShards.emplace_back(prod);
+      consumerShards.emplace_back(cons);
+    }
+  }
+
+  // not sure about the vector manipulation here might be okay with emplace_back
+  // or maybe both are wrong
+  void addProducer(u_int32_t producer, u_int32_t consumer, u_int32_t weight) {
+    this->producerShards[producer % this->shardCount][producer].push_back(
+        std::make_pair(consumer, weight));
+  }
+
+  // TODO add loading the specific shard here
+  std::vector<Edge> getProducerNeighborhood(u_int32_t producer) {
+    return this->producerShards[producer % this->shardCount][producer];
+  }
+
+  // TODO test this class without loading and storeing to make sure it works
+  //  then add the loading and storeing and it should work fine
+  //  then will prolly need to look at makeing the hashing better
+};
+
 // namespace {
-std::vector<Pair> greedy(Graph graph);
+std::vector<Pair> greedy();
 int test(Graph graph);
-Pairing doubleGreedy(Graph graph);
+Pairing doubleGreedy();
 
 Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
               bool consumers[], bool producers[],
@@ -159,9 +194,9 @@ int main(int argc, char *argv[]) {
   std::vector<Pair> resultNormal;
 
   if (useDouble) {
-    result = doubleGreedy(graph);
+    result = doubleGreedy();
   } else {
-    resultNormal = greedy(graph);
+    resultNormal = greedy();
   }
   std::cout << "Finished Matching" << '\n';
   /*
@@ -211,7 +246,7 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-std::vector<Pair> greedy(Graph graph) {
+std::vector<Pair> greedy() {
   std::vector<Pair> matching;
 
   // this approach is ugly but havent seen any good options
@@ -265,7 +300,7 @@ std::vector<Pair> greedy(Graph graph) {
   return matching;
 }
 
-Pairing doubleGreedy(Graph graph) {
+Pairing doubleGreedy() {
   Pairing matching;
 
   readShard(0);
