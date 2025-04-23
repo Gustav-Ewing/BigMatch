@@ -4,6 +4,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <sys/types.h>
@@ -74,6 +75,8 @@ int readShard(u_int32_t shardNumber) {
   std::ifstream graphFile(filename);
   std::string inputstr;
 
+  // producerNeighborhoods.clear();
+  // consumerNeighborhoods.clear();
   Graph graph;
   getline(graphFile, inputstr);
   // this line only contains metadata we should already know
@@ -236,10 +239,11 @@ std::vector<Pair> greedy(Graph graph) {
     if (!producers[i]) {
       continue;
     }
-    std::cout << "producer: " << i << '\r';
+    std::cout << "producer: " << i << "\t\r" << std::flush;
     if (producerNeighborhoods.count(i) == 0) {
       loadedShard++;
       readShard(loadedShard);
+      std::cout << "\r\033[K";
       std::cout << "loaded shard: " << loadedShard << '\n';
     }
     neighbors = producerNeighborhoods[i];
