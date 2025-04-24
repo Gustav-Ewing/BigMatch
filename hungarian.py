@@ -17,49 +17,79 @@ def hungarian():
 
     matrixlines = int(linewords[0])
     matrixcols = int(linewords[1])
-    matrix = np.zeros((matrixlines, matrixcols), dtype=int)
-    prosumer_edges = defaultdict(list)
-    pair_edge_weight = defaultdict(int)
+    num_of_edges = int(linewords[2])
 
-    while True:
-
-        nextline = f.readline().split()
-        if not nextline:
-            break
-
-        prosumer_edges[int(nextline[0])].append(int(nextline[1]))
-
-        if len(nextline) == 2:
-
-            matrix[int(nextline[0]) - 1][int(nextline[1]) - 1] = 1
-            pair_edge_weight[(int(nextline[0]), int(nextline[1]))] = 1
-            continue
-
-        pair_edge_weight[(int(nextline[0]), int(nextline[1]))] = int(nextline[2])
-
-        matrix[int(nextline[0]) - 1][int(nextline[1]) - 1] = int(nextline[2])
     if sys.argv[2] == "hungarian":
+        matrix = np.zeros((matrixlines, matrixcols), dtype=int)
+
+        while True:
+            nextline = f.readline().split()
+            if not nextline:
+                break
+
+            if len(nextline) == 2:
+
+                matrix[int(nextline[0]) - 1][int(nextline[1]) - 1] = 1
+                continue
+
+            matrix[int(nextline[0]) - 1][int(nextline[1]) - 1] = int(nextline[2])
+
         row_ind, col_ind = linear_sum_assignment(matrix, maximize=True)
         max_weight = matrix[row_ind, col_ind].sum()
 
     elif sys.argv[2] == "random2":
+        prosumer_edges = defaultdict(list)
+        pair_edge_weight = defaultdict(int)
+        processed_lines = 0
+
+        update_interval_read = int(max(1, num_of_edges / 100))
+
+        while True:
+            nextline = f.readline().split()
+            if not nextline:
+                break
+
+            prosumer_edges[int(nextline[0])].append(int(nextline[1]))
+
+            if len(nextline) == 2:
+
+                pair_edge_weight[(int(nextline[0]), int(nextline[1]))] = 1
+                continue
+
+            pair_edge_weight[(int(nextline[0]), int(nextline[1]))] = int(nextline[2])
+            if (
+                processed_lines + 1
+            ) % update_interval_read == 0 or processed_lines == num_of_edges - 1:
+                print(
+                    f"Reading graph file... //  {processed_lines:,} out of {num_of_edges:,} edges read // ({(processed_lines/ num_of_edges) * 100:.0f}%)\r",
+                    end="",
+                    flush=True,
+                )
+            processed_lines = processed_lines + 1
+
+        print("\n\n ***************** FINISHED READING FILE ********************  \n\n")
+
         assignments = []
-        used_cons = []
+        used_cons = set()
         dupes = 0
-        update_interval = max(1, matrixlines / 50)
+        update_interval = max(1, matrixlines / 100)
 
         for p in range(matrixlines):
             while True:
+                if len(prosumer_edges[p]) != 0:
+                    rand = random.choice(prosumer_edges[p])
+                else:
 
-                rand = random.randint(0, matrixcols - 1)
-                if len(prosumer_edges[p]) == 0:
+                    print("No edges left\n")
                     break
-                elif rand in prosumer_edges[p] and rand not in used_cons:
-                    used_cons.append(rand)
+                rand = random.choice(prosumer_edges[p])
+                if rand not in used_cons:
+                    used_cons.add(rand)
                     assignments.append((p, rand, pair_edge_weight[(p, rand)]))
                     break
                 else:
                     dupes = dupes + 1
+                    prosumer_edges[p].remove(rand)
 
             if (p + 1) % update_interval == 0 or p == matrixlines - 1:
                 print(
@@ -114,7 +144,7 @@ def hungarian():
         max_weight = sum(val for _, _, val in assignments)
 
     # print(matrix)
-    print("Max weight is : " + str(max_weight))
+    print("Total weight is : " + str(max_weight))
 
 
 np.set_printoptions(threshold=sys.maxsize)
