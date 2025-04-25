@@ -4,6 +4,7 @@ import numpy as np
 import random
 import sys
 from collections import defaultdict
+import time
 
 
 def hungarian():
@@ -38,36 +39,42 @@ def hungarian():
         max_weight = matrix[row_ind, col_ind].sum()
 
     elif sys.argv[2] == "random2":
+        start = time.perf_counter()
         prosumer_edges = defaultdict(list)
         pair_edge_weight = defaultdict(int)
         processed_lines = 0
 
-        update_interval_read = int(max(1, num_of_edges / 100))
+        update_interval_read = int(max(1, num_of_edges / 500))
 
         while True:
-            nextline = f.readline().split()
+            nextline = [int(item) for item in f.readline().split()]
+            # nextline = f.readline().split()
             if not nextline:
                 break
 
-            prosumer_edges[int(nextline[0])].append(int(nextline[1]))
+            producer = nextline[0]
+            consumer = nextline[1]
+            weight = nextline[2]
+            prosumer_edges[(producer)].append((consumer))
 
             if len(nextline) == 2:
 
-                pair_edge_weight[(int(nextline[0]), int(nextline[1]))] = 1
+                pair_edge_weight[((producer), (consumer))] = 1
                 continue
 
-            pair_edge_weight[(int(nextline[0]), int(nextline[1]))] = int(nextline[2])
+            pair_edge_weight[((producer), (consumer))] = weight
+
+            processed_lines = processed_lines + 1
             if (
-                processed_lines + 1
-            ) % update_interval_read == 0 or processed_lines == num_of_edges - 1:
+                processed_lines
+            ) % update_interval_read == 0 or processed_lines == num_of_edges:
                 print(
-                    f"Reading graph file... //  {processed_lines:,} out of {num_of_edges:,} edges read // ({(processed_lines/ num_of_edges) * 100:.0f}%)\r",
+                    f"\rImporting graph file... //  {processed_lines:,} out of {num_of_edges:,} edges read // ({(processed_lines/ num_of_edges) * 100:.0f}%)",
                     end="",
                     flush=True,
                 )
-            processed_lines = processed_lines + 1
 
-        print("\n\n ***************** FINISHED READING FILE ********************  \n\n")
+        print("\n\n** FINISHED READING FILE **  \n")
 
         assignments = []
         used_cons = set()
@@ -82,7 +89,6 @@ def hungarian():
 
                     print("No edges left\n")
                     break
-                rand = random.choice(prosumer_edges[p])
                 if rand not in used_cons:
                     used_cons.add(rand)
                     assignments.append((p, rand, pair_edge_weight[(p, rand)]))
@@ -91,9 +97,9 @@ def hungarian():
                     dupes = dupes + 1
                     prosumer_edges[p].remove(rand)
 
-            if (p + 1) % update_interval == 0 or p == matrixlines - 1:
+            if (p + 1) % update_interval == 0 or p == matrixlines:
                 print(
-                    f"Processed {p+1:,} out of {matrixlines:,} elements ({(p/ matrixlines) * 100:.0f}%)\r",
+                    f"\rProcessed {p+1:,} out of {matrixlines:,} elements ({(p/ matrixlines) * 100:.0f}%)",
                     end="",
                     flush=True,
                 )
@@ -102,6 +108,10 @@ def hungarian():
         print("\n")
 
         max_weight = sum(val for _, _, val in assignments)
+
+        end = time.perf_counter()
+        elapsed_time = end - start  # Calculate the difference
+        print(f"Time elapsed: {elapsed_time:.6f} seconds \n")
 
     elif sys.argv[2] == "random":
         assignments = []
