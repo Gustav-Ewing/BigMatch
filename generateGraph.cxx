@@ -15,15 +15,16 @@
 #include <unordered_map>
 #include <utility>
 
-#define PROSUMERS 100000
+#define PROSUMERS 1000
 #define CONSUMERS PROSUMERS * 5
 #define SIZE PROSUMERS + (CONSUMERS)
-#define EDGES_PER_CHUNK 10000000 // 10 000 000 is around 165MB
+#define EDGES_PER_CHUNK 100000000 // 10 000 000 is around 165MB
 #define SPARSEFACTOR                                                           \
   (3 * log(SIZE) / (SIZE)) // percent chance to not create make_edge
 #define SEED 1234          // Current seed for the string
-#define BETA                                                                   \
-  2 // Beta value, determines the scaling of weights for a nodes edges
+#define GAMMA                                                                  \
+  2 // GAMMA value, determines the scaling of weights for a nodes edges
+#define BETA 5
 #define MAXWEIGHT 100 // Max allowed weight
 
 using namespace std;
@@ -41,8 +42,8 @@ struct pair_equal {
 
 struct pair_hash {
   size_t operator()(const pair<int, int> &p) const {
-    uint64_t a = static_cast<uint32_t>(min(p.first, p.second));
-    uint64_t b = static_cast<uint32_t>(max(p.second, p.first));
+    uint64_t a = static_cast<uint32_t>(p.first);
+    uint64_t b = static_cast<uint32_t>(p.second);
     u_int64_t hash = (a << 32) | (b);
     // cout << "a = " << p.first << " and b = " << p.second << " and hash is "
     // << hash << "\n";
@@ -123,7 +124,11 @@ int main() {
   std::binomial_distribution<> degree_dist(CONSUMERS, SPARSEFACTOR);
   std::uniform_int_distribution<> consumer_dist(0, (CONSUMERS)-1);
 
-  unordered_map<std::pair<int, int>, Weight, pair_hash, pair_equal> graph;
+  unordered_map<std::pair<int, int>, Weight, pair_hash> graph;
+  unordered_map<int32_t, Weight> consumer_weights;
+  for (int32_t i = 0; i < CONSUMERS; i++) {
+    consumer_weights[i] = MAXWEIGHT;
+  }
   int chunk = 0;
   uint32_t num_of_edges = 0;
 
@@ -140,18 +145,24 @@ int main() {
       if (graph.find({i, consumer}) != graph.end()) {
         continue;
       }
+      uint32_t consumer_weight_limit = MAXWEIGHT;
 
-      weight_distrib.param(
-          poisson_distribution<uint32_t>::param_type((weight_limit) / 2));
+      consumer_weight_limit = consumer_weights[consumer] * BETA;
+      weight_distrib.param(poisson_distribution<uint32_t>::param_type(
+          (min(weight_limit, consumer_weight_limit)) / 2));
+
       uint32_t new_weight = weight_distrib(gen);
-      while (new_weight > weight_limit || new_weight == 0) {
+      while (new_weight > weight_limit || new_weight > consumer_weight_limit ||
+             new_weight == 0) {
         new_weight = weight_distrib(gen);
       }
-      weight_limit = std::min(new_weight * BETA, weight_limit);
+      weight_limit = std::min(new_weight * GAMMA, weight_limit);
       if (graph.find({i, consumer}) != graph.end()) {
         continue;
       }
       graph[{i, consumer}] = new_weight;
+      consumer_weights[consumer] =
+          std::min(consumer_weights[consumer], new_weight);
       producer_current_edges++;
     }
 
