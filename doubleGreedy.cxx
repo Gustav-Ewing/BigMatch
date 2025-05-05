@@ -49,6 +49,8 @@ using Neighborhood = std::unordered_map<u_int32_t, std::vector<Edge>>;
 Neighborhood producerNeighborhoods;
 Neighborhood consumerNeighborhoods;
 
+// todo hold only shard at a time and push the binary to file when unloading
+// then clear it and load the new one
 class ShardMap {
   std::vector<Neighborhood> producerShards;
   std::vector<Neighborhood> consumerShards;
@@ -58,6 +60,7 @@ public:
   explicit ShardMap(u_int32_t shardCount) : shardCount(shardCount) {}
 
   // make sure to verify that this creates distinct maps
+  // i.e. doesnt dupe one map over and over
   void initalize() {
     for (u_int32_t i = 0; i < this->shardCount; i++) {
       Neighborhood prod;
@@ -70,19 +73,53 @@ public:
   // not sure about the vector manipulation here might be okay with emplace_back
   // or maybe both are wrong
   void addProducer(u_int32_t producer, u_int32_t consumer, u_int32_t weight) {
-    this->producerShards[producer % this->shardCount][producer].push_back(
-        std::make_pair(consumer, weight));
+    // std::cout << this->producerShards.size() << '\n';
+    this->producerShards[producer % this->shardCount][producer].emplace_back(
+        consumer, weight);
   }
 
   // TODO add loading the specific shard here
+  // if the shard used changed unload last shard
   std::vector<Edge> getProducerNeighborhood(u_int32_t producer) {
-    return this->producerShards[producer % this->shardCount][producer];
+    // std::cout << producer << '\n';
+    if (this->producerShards[producer % this->shardCount].count(producer) ==
+        0) {
+      std::vector<Edge> dummy;
+      dummy.emplace_back(0, 0);
+      return dummy;
+    }
+    std::vector<Edge> result =
+        this->producerShards[producer % this->shardCount][producer];
+    // std::cout << result[0].first << '\n';
+    return result;
   }
 
   // TODO test this class without loading and storeing to make sure it works
   //  then add the loading and storeing and it should work fine
   //  then will prolly need to look at makeing the hashing better
 };
+
+void testSharding() {
+  ShardMap testMap = ShardMap(4);
+  testMap.initalize();
+  for (u_int32_t i = 1; i <= 10; i++) {
+    for (u_int32_t j = 1; j <= 10; j++) {
+      // std::cout << "start adding" << '\n';
+      testMap.addProducer(i, j, (i * j) + (i * 5));
+      // std::cout << "finished adding" << '\n';
+    }
+  }
+  std::cout << "phase 2" << '\n';
+  for (u_int32_t i = 1; i <= 10; i++) {
+    for (u_int32_t j = 1; j <= 10; j++) {
+      Edge edger = testMap.getProducerNeighborhood(i)[j];
+      if (edger.first == 0) {
+        continue;
+      }
+      std::cout << edger.first << '\t' << edger.second << '\n';
+    }
+  }
+}
 
 // namespace {
 std::vector<Pair> greedy();
@@ -163,6 +200,8 @@ int main(int argc, char *argv[]) {
       useDouble = true;
     }
   }
+  testSharding();
+  return 0;
 
   std::string filename = "graph" + std::to_string(0) + ".txt";
   std::ifstream graphFile(filename);
