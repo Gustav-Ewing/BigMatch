@@ -5,6 +5,11 @@ import random
 import sys
 from collections import defaultdict
 import time
+from scipy.sparse import csr_array, lil_array
+from scipy.sparse.csgraph import (
+    min_weight_full_bipartite_matching,
+    maximum_bipartite_matching,
+)
 
 
 def hungarian():
@@ -37,6 +42,47 @@ def hungarian():
 
         row_ind, col_ind = linear_sum_assignment(matrix, maximize=True)
         max_weight = matrix[row_ind, col_ind].sum()
+
+    elif sys.argv[2] == "sparse":
+
+        start = time.perf_counter()
+        matrix = lil_array((matrixlines, matrixcols))
+        processed_lines = 0
+
+        update_interval_read = int(max(1, num_of_edges / 500))
+        while True:
+            nextline = f.readline().split()
+            if not nextline:
+                break
+
+            if len(nextline) == 2:
+
+                matrix[int(nextline[0]) - 1, int(nextline[1]) - 1] = -1
+                continue
+
+            matrix[int(nextline[0]) - 1, int(nextline[1]) - 1] = -int(nextline[2])
+            processed_lines = processed_lines + 1
+            if (
+                processed_lines
+            ) % update_interval_read == 0 or processed_lines == num_of_edges:
+                print(
+                    f"\rImporting graph file... //  {processed_lines:,} out of {num_of_edges:,} edges read // ({(processed_lines/ num_of_edges) * 100:.0f}%)",
+                    end="",
+                    flush=True,
+                )
+
+        print("created lil array")
+
+        matrix = matrix.tocsr()
+        print("created csr array")
+
+        row_ind, col_ind = min_weight_full_bipartite_matching(matrix)
+        print("min weight calc done, started sum calc")
+        max_weight = int(-matrix[row_ind, col_ind].sum())
+
+        end = time.perf_counter()
+        elapsed_time = end - start  # Calculate the difference
+        print(f"Time elapsed: {elapsed_time:.6f} seconds \n")
 
     elif sys.argv[2] == "random2":
         start = time.perf_counter()
