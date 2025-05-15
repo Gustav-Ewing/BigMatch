@@ -10,7 +10,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-#configure_file(TutorialConfig.h.in TutorialConfig.h) 
+#for lldb debugging
+# set(CMAKE_BUILD_TYPE Debug)
+# set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
 
 #these 2 lines activates address sanitizer which might help with mem errors
 #add_compile_options(-fsanitize=address)

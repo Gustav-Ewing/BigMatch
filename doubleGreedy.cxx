@@ -1,6 +1,8 @@
 #include <array>
+#include <cassert>
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/map.hpp>
+#include <cereal/types/tuple.hpp>
 #include <cereal/types/utility.hpp>
 #include <cereal/types/vector.hpp>
 #include <cstddef>
@@ -53,13 +55,41 @@ using Neighborhood = std::unordered_map<u_int32_t, std::vector<Edge>>;
 Neighborhood producerNeighborhoods;
 Neighborhood consumerNeighborhoods;
 
-// todo hold only shard at a time and push the binary to file when unloading
-// then clear it and load the new one
+// namespace {
+std::vector<Pair> greedy();
+int test(Graph graph);
+Pairing doubleGreedy();
+
+Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
+              bool consumers[], bool producers[],
+              std::unordered_set<u_int32_t> consumerInPath,
+              std::unordered_set<u_int32_t> producerInPath);
+
+// std::pair<u_int32_t, u_int32_t> nextEdge(u_int32_t node, std::vector<Pair>
+// path,
+//                                          bool typeNode, bool consumer[],
+//                                          bool producer[]);
+// } // namespace
+const static auto make_edge = [](int a, int b) {
+  return std::make_pair(std::min(a, b), std::max(a, b));
+};
+
+template <class Archive> void serialize(Archive &arx, Edge &edge) {
+  arx(edge.first, edge.second); // Serialize both elements of the pair
+}
+
+class Neighborhood2 {
+public:
+  std::unordered_map<u_int32_t, std::vector<Edge>> hoods;
+  template <class Archive> void serialize(Archive &arx) { arx(hoods); }
+};
+
 class ShardMapNew {
-  static inline Neighborhood producerShard;
+  static inline Neighborhood2 producerShard;
   // Neighborhood consumerShard;
   static inline std::unordered_set<u_int32_t> existingShards;
   static inline u_int32_t activeShard;
+  static inline bool active = false;
 
 public:
   ShardMapNew() = delete;
@@ -68,55 +98,88 @@ public:
 
   static void addProducer(u_int32_t producer, u_int32_t consumer,
                           u_int32_t weight) {
-    // std::cout << "addProducer start" << '\n';
-    u_int32_t producersShard = producer % ShardMapNew::shardCount;
 
-    // std::cout << "addProducer inbetween" << '\n';
+    u_int32_t shardOfProducer = producer % ShardMapNew::shardCount;
+    // std::cout << "shard: " << shardOfProducer << '\n';
 
     // if the shard is already in the set this returns false
     // otherwise it adds it to the set and returns true
-    auto [unused, added] = existingShards.insert(producersShard);
-    // std::cout << "addProducer halfway" << '\n';
+    auto [unused, added] = existingShards.insert(shardOfProducer);
 
     // this means a new shard needs to be created
     if (added) {
-      ShardMapNew::saveShard();
+      // if there is an active shard save it to the disk
+      if (ShardMapNew::active) {
+        ShardMapNew::saveShard();
+      }
+      // when the current shard is inactive make sure to set its number
+      // and activate it
+      ShardMapNew::active = true;
+      ShardMapNew::activeShard = shardOfProducer;
+
+      // std::cout << "Creating shard " << shardOfProducer << '\n';
+      // build the new vector and add it to the map
       std::vector<Edge> tmpVector;
       tmpVector.emplace_back(consumer, weight);
-      ShardMapNew::producerShard[producer] = tmpVector;
+      ShardMapNew::producerShard.hoods[producer] = tmpVector;
 
     }
 
     // shard already exists so just load it
     else {
-      ShardMapNew::loadShard(producersShard);
+      ShardMapNew::loadShard(shardOfProducer);
+      std::vector<Edge> tmpVector = ShardMapNew::producerShard.hoods[producer];
+      tmpVector.emplace_back(consumer, weight);
+      ShardMapNew::producerShard.hoods[producer] = tmpVector;
+      // std::cout << "producers in map: "
+      // << ShardMapNew::producerShard.hoods.size() << '\n';
     }
+    // std::cout << ShardMapNew::producerShard.size() << '\n';
   }
 
   // saves current shard to the disk and clears the map
+  // make sure that you dont use this correctly
+  // and dont overwrite a preexisting shard by mistake
   static void saveShard() {
-    // std::cout << "saveShard start" << '\n';
-    std::ofstream os("map.bin", std::ios::binary);
-    cereal::BinaryOutputArchive archive(os);
+
+    // std::cout << "Saving shard " << activeShard << '\n';
+
+    // this is here so that you dont overwrite a shard by manually performing a
+    // saveShard into a loadShard without realizing that loadShard performs a
+    // saveShard implicitly
+    if (!active) {
+      return;
+    }
+
+    std::ofstream file("shards/map" + std::to_string(ShardMapNew::activeShard) +
+                           ".bin",
+                       std::ios::binary);
+    cereal::BinaryOutputArchive archive(file);
     archive(ShardMapNew::producerShard);
+    ShardMapNew::producerShard.hoods.clear();
+    ShardMapNew::active = false;
   }
 
   // loads the shard
   // if the shard is already loaded nothing happens
-  // if the shard is not loaded it is saved and then loaded
+  // if the shard is not loaded then the old shard is saved
+  // and then the new one is loaded
   static void loadShard(u_int32_t shard) {
-    // std::cout << "loadShard start" << '\n';
-    if (shard == ShardMapNew::activeShard) {
-      return;
-    } else {
-      ShardMapNew::saveShard();
 
-      std::ifstream os("map.bin", std::ios::binary);
-      cereal::BinaryInputArchive archive(os);
-      archive(ShardMapNew::producerShard);
-
+    // std::cout << "Fake Loading shard " << shard << '\n';
+    // only early return when the existing shard is the correct one and
+    // it is active
+    if (shard == ShardMapNew::activeShard && ShardMapNew::active) {
       return;
     }
+    ShardMapNew::saveShard();
+    // std::cout << "Loading shard " << shard << '\n';
+    std::ifstream file("shards/map" + std::to_string(shard) + ".bin",
+                       std::ios::binary);
+    cereal::BinaryInputArchive archive(file);
+    archive(ShardMapNew::producerShard);
+    ShardMapNew::active = true;
+    ShardMapNew::activeShard = shard;
   }
 
   static std::vector<Edge> getProducerNeighborhood(u_int32_t producer) {
@@ -124,22 +187,26 @@ public:
     u_int32_t producersShard = producer % ShardMapNew::shardCount;
     ShardMapNew::loadShard(producersShard);
 
-    // should be a better way to handle nonexisting hoods than this
-    if (ShardMapNew::producerShard.count(producer) == 0) {
-      std::cout << "Didnt find a neighborhood";
+    // grab the specific hood
+    auto kvpair = ShardMapNew::producerShard.hoods.find(producer);
+
+    // check if it doesnt exist
+    // in this case send a dummy value back for now
+    if (kvpair == ShardMapNew::producerShard.hoods.end()) {
+      std::cout << "Didnt find a neighborhood" << '\n';
       std::vector<Edge> dummy;
       dummy.emplace_back(0, 0);
       return dummy;
     }
-
-    // if it exists return it
-    std::vector<Edge> result = ShardMapNew::producerShard[producer];
-    // std::cout << result[0].first << '\n';
-    return result;
+    // otherwise just return it
+    // note that first should be equal to producer here
+    // otherwise we got the wrong neighborhood
+    assert(kvpair->first == producer);
+    return kvpair->second;
   }
 };
 
-void setUpMap(u_int32_t graphFileCount) {
+void setUpMap(u_int32_t chunks) {
 
   // standard first shard naming maybe change this later?
   std::string filename = "graph0.txt";
@@ -162,15 +229,24 @@ void setUpMap(u_int32_t graphFileCount) {
   getline(input, p, ' ');
   getline(input, e, ' ');
 
-  nrConsumers = std::stoul(c);
-  nrProducers = std::stoul(p);
-  entries = std::stoul(e);
+  nrConsumers = u_int32_t(std::stoul(c));
+  nrProducers = u_int32_t(std::stoul(p));
+  entries = u_int32_t(std::stoul(e));
   graphSize = nrProducers + nrConsumers; // is this still used though?
 
-  std::cout << "metadeta setup done" << '\n';
+  std::cout << "metadata setup done" << '\n';
 
-  for (u_int32_t i = 0; i < graphFileCount; i++) {
-    std::cout << "adding producers from shard: " << i << '\n';
+  for (u_int32_t i = 0; i < chunks; i++) {
+    std::string filename = "graph" + std::to_string(i) + ".txt";
+    std::ifstream graphFile(filename);
+    std::string inputstr;
+
+    // metadata only gets added to file 0 for now?
+    // maybe we should concilidate into a metadata only file then?
+    if (i == 0) {
+      getline(graphFile, inputstr);
+    }
+    std::cout << "adding producers from chunk: " << i << '\n';
     while (getline(graphFile, inputstr)) {
       // std::cout << inputstr << '\n';
       std::istringstream input;
@@ -183,173 +259,26 @@ void setUpMap(u_int32_t graphFileCount) {
       getline(input, node1, ' ');
       getline(input, node2, ' ');
       getline(input, weight, ' ');
-      // cout << node1 << "\t" << node2 << "\t" << weight << "\n";
 
       // trying a adjacency list approach
       // first check if an enntry already exists
       // if it does extract it and this node to that neighborhood and read it
 
-      u_int32_t producer = 1 + stoul(node1);
-      u_int32_t consumer = 1 + stoul(node2);
-      u_int32_t edgeWeight = stoul(weight);
+      u_int32_t producer = 1 + u_int32_t(stoul(node1));
+      u_int32_t consumer = 1 + u_int32_t(stoul(node2));
+      u_int32_t edgeWeight = u_int32_t(stoul(weight));
 
-      // std::cout << "adding producers from shard: " << i << '\n';
+      // std::cout << producer << ' ' << consumer << ' ' << edgeWeight << '\n';
       ShardMapNew::addProducer(producer, consumer, edgeWeight);
+      // std::cout << ShardMapNew::getProducerNeighborhood(producer).size()
+      // << '\n';
       // std::cout << "added producers from shard: " << i << '\n';
 
       // preparing for a future function that adds consumer neighborhoods for
       // the double greedy algorithm
-      // shardMap.addConsumer(consumer, producer, weight);
+      // TODO shardMap.addConsumer(consumer, producer, weight);
     }
   }
-}
-
-class ShardMap {
-  std::vector<Neighborhood> producerShards;
-  std::vector<Neighborhood> consumerShards;
-  u_int32_t shardCount;
-
-public:
-  explicit ShardMap(u_int32_t shardCount) : shardCount(shardCount) {}
-
-  // make sure to verify that this creates distinct maps
-  // i.e. doesnt dupe one map over and over
-  void initalize() {
-    for (u_int32_t i = 0; i < this->shardCount; i++) {
-      Neighborhood prod;
-      Neighborhood cons;
-      producerShards.emplace_back(prod);
-      consumerShards.emplace_back(cons);
-    }
-  }
-
-  // not sure about the vector manipulation here might be okay with emplace_back
-  // or maybe both are wrong
-  void addProducer(u_int32_t producer, u_int32_t consumer, u_int32_t weight) {
-    // std::cout << this->producerShards.size() << '\n';
-    this->producerShards[producer % this->shardCount][producer].emplace_back(
-        consumer, weight);
-  }
-
-  // TODO add loading the specific shard here
-  // if the shard used changed unload last shard
-  // Maybe make this optional to signal that it can return a dummy value
-  std::vector<Edge> getProducerNeighborhood(u_int32_t producer) {
-    // std::cout << producer << '\n';
-    if (this->producerShards[producer % this->shardCount].count(producer) ==
-        0) {
-      std::vector<Edge> dummy;
-      dummy.emplace_back(0, 0);
-      return dummy;
-    }
-    std::vector<Edge> result =
-        this->producerShards[producer % this->shardCount][producer];
-    // std::cout << result[0].first << '\n';
-    return result;
-  }
-};
-
-// TODO test this class without loading and storeing to make sure it works
-//  then add the loading and storeing and it should work fine
-//  then will prolly need to look at makeing the hashing better
-//
-//  This tests without loading and storeing
-void testSharding() {
-  ShardMap testMap = ShardMap(4);
-  testMap.initalize();
-  for (u_int32_t i = 1; i <= 10; i++) {
-    for (u_int32_t j = 1; j <= 10; j++) {
-      // std::cout << "start adding" << '\n';
-      testMap.addProducer(i, j, (i * j) + (i * 5));
-      // std::cout << "finished adding" << '\n';
-    }
-  }
-  std::cout << "phase 2" << '\n';
-  for (u_int32_t i = 1; i <= 10; i++) {
-
-    // the condition below here is different from the other because it deals
-    // with the vector which is 0 indexed while nodes are 1 indexed
-    for (u_int32_t j = 0; j < 10; j++) {
-      Edge edger = testMap.getProducerNeighborhood(i)[j];
-      if (edger.first == 0) {
-        continue;
-      }
-      std::cout << edger.first << '\t' << edger.second << '\n';
-    }
-  }
-  std::cout << "finished test" << '\n';
-}
-
-// namespace {
-std::vector<Pair> greedy();
-int test(Graph graph);
-Pairing doubleGreedy();
-
-Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
-              bool consumers[], bool producers[],
-              std::unordered_set<u_int32_t> consumerInPath,
-              std::unordered_set<u_int32_t> producerInPath);
-
-// std::pair<u_int32_t, u_int32_t> nextEdge(u_int32_t node, std::vector<Pair>
-// path,
-//                                          bool typeNode, bool consumer[],
-//                                          bool producer[]);
-// } // namespace
-
-const static auto make_edge = [](int a, int b) {
-  return std::make_pair(std::min(a, b), std::max(a, b));
-};
-
-int readShard(u_int32_t shardNumber) {
-  std::string filename = "graph" + std::to_string(shardNumber) + ".txt";
-  std::ifstream graphFile(filename);
-  std::string inputstr;
-
-  Graph graph;
-  getline(graphFile, inputstr);
-  // this line only contains metadata we should already know
-  // therefore no need to process
-
-  while (getline(graphFile, inputstr)) {
-    // std::cout << inputstr << '\n';
-    std::istringstream input;
-    input.str(inputstr);
-    if (inputstr.empty()) {
-      continue;
-    }
-
-    std::string node1, node2, weight;
-    getline(input, node1, ' ');
-    getline(input, node2, ' ');
-    getline(input, weight, ' ');
-    // cout << node1 << "\t" << node2 << "\t" << weight << "\n";
-
-    graph[{stoul(node1), stoul(node2)}] = stoul(weight);
-    // this isnt used anywhere as far as I remember
-
-    // trying a adjacency list approach
-    // first check if an enntry already exists
-    // if it does extract it and this node to that neighborhood and read it
-
-    u_int32_t producer = 1 + stoul(node1);
-    u_int32_t consumer = 1 + stoul(node2);
-    u_int32_t edgeWeight = stoul(weight);
-
-    std::vector<Edge> tmp;
-    if (producerNeighborhoods.count(producer) != 0u) {
-      tmp = producerNeighborhoods[producer];
-    }
-    tmp.emplace_back(consumer, edgeWeight);
-    producerNeighborhoods[producer] = tmp;
-
-    tmp.clear();
-    if (consumerNeighborhoods.count(consumer) != 0u) {
-      tmp = consumerNeighborhoods[consumer];
-    }
-    tmp.emplace_back(producer, edgeWeight);
-    consumerNeighborhoods[consumer] = tmp;
-  }
-  return 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -359,11 +288,11 @@ int main(int argc, char *argv[]) {
       useDouble = true;
     }
   }
-  ShardMapNew::shardCount = 1;
-  setUpMap(1);
-  auto tmp = ShardMapNew::getProducerNeighborhood(1);
-  std::cout << tmp[0].first << ' ' << tmp[0].second << '\n';
-  return 0;
+  ShardMapNew::shardCount = 5;
+  setUpMap(272);
+  // auto tmp = ShardMapNew::getProducerNeighborhood(10);
+  // std::cout << tmp[0].first << ' ' << tmp[0].second << '\n';
+  // return 0;
 
   std::string filename = "graph" + std::to_string(0) + ".txt";
   std::ifstream graphFile(filename);
@@ -447,6 +376,57 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
+int readShard(u_int32_t shardNumber) {
+  std::string filename = "graph" + std::to_string(shardNumber) + ".txt";
+  std::ifstream graphFile(filename);
+  std::string inputstr;
+
+  Graph graph;
+  getline(graphFile, inputstr);
+  // this line only contains metadata we should already know
+  // therefore no need to process
+
+  while (getline(graphFile, inputstr)) {
+    // std::cout << inputstr << '\n';
+    std::istringstream input;
+    input.str(inputstr);
+    if (inputstr.empty()) {
+      continue;
+    }
+
+    std::string node1, node2, weight;
+    getline(input, node1, ' ');
+    getline(input, node2, ' ');
+    getline(input, weight, ' ');
+    // cout << node1 << "\t" << node2 << "\t" << weight << "\n";
+
+    graph[{stoul(node1), stoul(node2)}] = u_int32_t(stoul(weight));
+    // this isnt used anywhere as far as I remember
+
+    // trying a adjacency list approach
+    // first check if an enntry already exists
+    // if it does extract it and this node to that neighborhood and read it
+
+    u_int32_t producer = 1 + u_int32_t(stoul(node1));
+    u_int32_t consumer = 1 + u_int32_t(stoul(node2));
+    u_int32_t edgeWeight = u_int32_t(stoul(weight));
+
+    std::vector<Edge> tmp;
+    if (producerNeighborhoods.count(producer) != 0u) {
+      tmp = producerNeighborhoods[producer];
+    }
+    tmp.emplace_back(consumer, edgeWeight);
+    producerNeighborhoods[producer] = tmp;
+
+    tmp.clear();
+    if (consumerNeighborhoods.count(consumer) != 0u) {
+      tmp = consumerNeighborhoods[consumer];
+    }
+    tmp.emplace_back(producer, edgeWeight);
+    consumerNeighborhoods[consumer] = tmp;
+  }
+  return 0;
+}
 std::vector<Pair> greedy() {
   std::vector<Pair> matching;
 
@@ -462,23 +442,17 @@ std::vector<Pair> greedy() {
   }
 
   // load Shard 0 before starting
-  u_int32_t loadedShard = 0;
-  std::cout << "loading shard: " << loadedShard << '\n';
-  readShard(loadedShard);
-  std::cout << "loaded shard: " << loadedShard << '\n';
+  // u_int32_t loadedShard = 0;
+  // std::cout << "loading shard: " << loadedShard << '\n';
+  // readShard(loadedShard);
+  // std::cout << "loaded shard: " << loadedShard << '\n';
 
   std::vector<std::pair<u_int32_t, u_int32_t>> neighbors;
   for (u_int32_t i = 1; i < nrProducers + 1; i++) {
     if (!producers[i]) {
       continue;
     }
-    std::cout << "producer: " << i << '\r';
-    if (producerNeighborhoods.count(i) == 0) {
-      loadedShard++;
-      readShard(loadedShard);
-      std::cout << "loaded shard: " << loadedShard << '\n';
-    }
-    neighbors = producerNeighborhoods[i];
+    neighbors = ShardMapNew::getProducerNeighborhood(i);
     u_int32_t highestWeight = 0;
     u_int32_t highestIndex = 0;
     for (std::pair<u_int32_t, u_int32_t> neighbor : neighbors) {
