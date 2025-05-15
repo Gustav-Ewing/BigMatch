@@ -289,7 +289,7 @@ int main(int argc, char *argv[]) {
     }
   }
   ShardMapNew::shardCount = 5;
-  setUpMap(272);
+  setUpMap(1);
   // auto tmp = ShardMapNew::getProducerNeighborhood(10);
   // std::cout << tmp[0].first << ' ' << tmp[0].second << '\n';
   // return 0;
@@ -432,31 +432,19 @@ std::vector<Pair> greedy() {
 
   // this approach is ugly but havent seen any good options
   //  init and set all nodes as available
-  bool consumers[nrConsumers];
-  bool producers[nrProducers];
-  for (u_int32_t i = 1; i < nrConsumers + 1; i++) {
-    consumers[i] = true;
-  }
-  for (u_int32_t i = 1; i < nrProducers + 1; i++) {
-    producers[i] = true;
-  }
-
-  // load Shard 0 before starting
-  // u_int32_t loadedShard = 0;
-  // std::cout << "loading shard: " << loadedShard << '\n';
-  // readShard(loadedShard);
-  // std::cout << "loaded shard: " << loadedShard << '\n';
+  std::pmr::unordered_set<u_int32_t> consumers;
+  std::pmr::unordered_set<u_int32_t> producers;
 
   std::vector<std::pair<u_int32_t, u_int32_t>> neighbors;
   for (u_int32_t i = 1; i < nrProducers + 1; i++) {
-    if (!producers[i]) {
+    if (producers.find(i) != producers.end()) {
       continue;
     }
     neighbors = ShardMapNew::getProducerNeighborhood(i);
     u_int32_t highestWeight = 0;
     u_int32_t highestIndex = 0;
     for (std::pair<u_int32_t, u_int32_t> neighbor : neighbors) {
-      if (!consumers[neighbor.first]) {
+      if (consumers.find(neighbor.first) != consumers.end()) {
         continue;
       }
       // std::cout << neighbor.second << '\n';
@@ -469,8 +457,8 @@ std::vector<Pair> greedy() {
       continue;
     }
     matching.emplace_back(i, highestIndex, highestWeight);
-    producers[i] = false;
-    consumers[highestIndex] = false;
+    producers.insert(i);
+    consumers.insert(highestIndex);
   }
   return matching;
 }
