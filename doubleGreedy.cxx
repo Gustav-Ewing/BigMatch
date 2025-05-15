@@ -1,4 +1,8 @@
 #include <array>
+#include <cereal/archives/binary.hpp>
+#include <cereal/types/map.hpp>
+#include <cereal/types/utility.hpp>
+#include <cereal/types/vector.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -51,6 +55,155 @@ Neighborhood consumerNeighborhoods;
 
 // todo hold only shard at a time and push the binary to file when unloading
 // then clear it and load the new one
+class ShardMapNew {
+  static inline Neighborhood producerShard;
+  // Neighborhood consumerShard;
+  static inline std::unordered_set<u_int32_t> existingShards;
+  static inline u_int32_t activeShard;
+
+public:
+  ShardMapNew() = delete;
+
+  static inline u_int32_t shardCount;
+
+  static void addProducer(u_int32_t producer, u_int32_t consumer,
+                          u_int32_t weight) {
+    // std::cout << "addProducer start" << '\n';
+    u_int32_t producersShard = producer % ShardMapNew::shardCount;
+
+    // std::cout << "addProducer inbetween" << '\n';
+
+    // if the shard is already in the set this returns false
+    // otherwise it adds it to the set and returns true
+    auto [unused, added] = existingShards.insert(producersShard);
+    // std::cout << "addProducer halfway" << '\n';
+
+    // this means a new shard needs to be created
+    if (added) {
+      ShardMapNew::saveShard();
+      std::vector<Edge> tmpVector;
+      tmpVector.emplace_back(consumer, weight);
+      ShardMapNew::producerShard[producer] = tmpVector;
+
+    }
+
+    // shard already exists so just load it
+    else {
+      ShardMapNew::loadShard(producersShard);
+    }
+  }
+
+  // saves current shard to the disk and clears the map
+  static void saveShard() {
+    // std::cout << "saveShard start" << '\n';
+    std::ofstream os("map.bin", std::ios::binary);
+    cereal::BinaryOutputArchive archive(os);
+    archive(ShardMapNew::producerShard);
+  }
+
+  // loads the shard
+  // if the shard is already loaded nothing happens
+  // if the shard is not loaded it is saved and then loaded
+  static void loadShard(u_int32_t shard) {
+    // std::cout << "loadShard start" << '\n';
+    if (shard == ShardMapNew::activeShard) {
+      return;
+    } else {
+      ShardMapNew::saveShard();
+
+      std::ifstream os("map.bin", std::ios::binary);
+      cereal::BinaryInputArchive archive(os);
+      archive(ShardMapNew::producerShard);
+
+      return;
+    }
+  }
+
+  static std::vector<Edge> getProducerNeighborhood(u_int32_t producer) {
+    // std::cout << producer << '\n';
+    u_int32_t producersShard = producer % ShardMapNew::shardCount;
+    ShardMapNew::loadShard(producersShard);
+
+    // should be a better way to handle nonexisting hoods than this
+    if (ShardMapNew::producerShard.count(producer) == 0) {
+      std::cout << "Didnt find a neighborhood";
+      std::vector<Edge> dummy;
+      dummy.emplace_back(0, 0);
+      return dummy;
+    }
+
+    // if it exists return it
+    std::vector<Edge> result = ShardMapNew::producerShard[producer];
+    // std::cout << result[0].first << '\n';
+    return result;
+  }
+};
+
+void setUpMap(u_int32_t graphFileCount) {
+
+  // standard first shard naming maybe change this later?
+  std::string filename = "graph0.txt";
+  std::ifstream graphFile(filename);
+  std::string inputstr;
+
+  getline(graphFile, inputstr);
+
+  std::istringstream input;
+  input.str(inputstr);
+  if (inputstr.empty()) {
+    std::cout
+        << "very bad!!! error when reading first line of first graph file";
+    return;
+  }
+
+  std::cout << "metadata setup start" << '\n';
+  std::string c, p, e;
+  getline(input, c, ' ');
+  getline(input, p, ' ');
+  getline(input, e, ' ');
+
+  nrConsumers = std::stoul(c);
+  nrProducers = std::stoul(p);
+  entries = std::stoul(e);
+  graphSize = nrProducers + nrConsumers; // is this still used though?
+
+  std::cout << "metadeta setup done" << '\n';
+
+  for (u_int32_t i = 0; i < graphFileCount; i++) {
+    std::cout << "adding producers from shard: " << i << '\n';
+    while (getline(graphFile, inputstr)) {
+      // std::cout << inputstr << '\n';
+      std::istringstream input;
+      input.str(inputstr);
+      if (inputstr.empty()) {
+        continue;
+      }
+
+      std::string node1, node2, weight;
+      getline(input, node1, ' ');
+      getline(input, node2, ' ');
+      getline(input, weight, ' ');
+      // cout << node1 << "\t" << node2 << "\t" << weight << "\n";
+
+      // trying a adjacency list approach
+      // first check if an enntry already exists
+      // if it does extract it and this node to that neighborhood and read it
+
+      u_int32_t producer = 1 + stoul(node1);
+      u_int32_t consumer = 1 + stoul(node2);
+      u_int32_t edgeWeight = stoul(weight);
+
+      // std::cout << "adding producers from shard: " << i << '\n';
+      ShardMapNew::addProducer(producer, consumer, edgeWeight);
+      // std::cout << "added producers from shard: " << i << '\n';
+
+      // preparing for a future function that adds consumer neighborhoods for
+      // the double greedy algorithm
+      // shardMap.addConsumer(consumer, producer, weight);
+    }
+  }
+}
+
 class ShardMap {
   std::vector<Neighborhood> producerShards;
   std::vector<Neighborhood> consumerShards;
@@ -80,6 +233,7 @@ public:
 
   // TODO add loading the specific shard here
   // if the shard used changed unload last shard
+  // Maybe make this optional to signal that it can return a dummy value
   std::vector<Edge> getProducerNeighborhood(u_int32_t producer) {
     // std::cout << producer << '\n';
     if (this->producerShards[producer % this->shardCount].count(producer) ==
@@ -93,12 +247,13 @@ public:
     // std::cout << result[0].first << '\n';
     return result;
   }
-
-  // TODO test this class without loading and storeing to make sure it works
-  //  then add the loading and storeing and it should work fine
-  //  then will prolly need to look at makeing the hashing better
 };
 
+// TODO test this class without loading and storeing to make sure it works
+//  then add the loading and storeing and it should work fine
+//  then will prolly need to look at makeing the hashing better
+//
+//  This tests without loading and storeing
 void testSharding() {
   ShardMap testMap = ShardMap(4);
   testMap.initalize();
@@ -111,7 +266,10 @@ void testSharding() {
   }
   std::cout << "phase 2" << '\n';
   for (u_int32_t i = 1; i <= 10; i++) {
-    for (u_int32_t j = 1; j <= 10; j++) {
+
+    // the condition below here is different from the other because it deals
+    // with the vector which is 0 indexed while nodes are 1 indexed
+    for (u_int32_t j = 0; j < 10; j++) {
       Edge edger = testMap.getProducerNeighborhood(i)[j];
       if (edger.first == 0) {
         continue;
@@ -119,6 +277,7 @@ void testSharding() {
       std::cout << edger.first << '\t' << edger.second << '\n';
     }
   }
+  std::cout << "finished test" << '\n';
 }
 
 // namespace {
@@ -200,7 +359,10 @@ int main(int argc, char *argv[]) {
       useDouble = true;
     }
   }
-  testSharding();
+  ShardMapNew::shardCount = 1;
+  setUpMap(1);
+  auto tmp = ShardMapNew::getProducerNeighborhood(1);
+  std::cout << tmp[0].first << ' ' << tmp[0].second << '\n';
   return 0;
 
   std::string filename = "graph" + std::to_string(0) + ".txt";
