@@ -52,6 +52,7 @@ struct pair_hash {
 };
 
 static int remove_old_graphs() {
+  filesystem::create_directory("graphs");
   namespace fs = std::filesystem;
 
   std::string directory =
