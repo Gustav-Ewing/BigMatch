@@ -15,16 +15,16 @@
 #include <unordered_map>
 #include <utility>
 
-#define PROSUMERS 1000
+#define PROSUMERS 100000
 #define CONSUMERS PROSUMERS * 5
 #define SIZE PROSUMERS + (CONSUMERS)
-#define EDGES_PER_CHUNK 100000000 // 10 000 000 is around 165MB
+#define EDGES_PER_CHUNK 100000 // 10 000 000 is around 165MB
 #define SPARSEFACTOR                                                           \
   (3 * log(SIZE) / (SIZE)) // percent chance to not create make_edge
 #define SEED 1234          // Current seed for the string
 #define GAMMA                                                                  \
   2 // GAMMA value, determines the scaling of weights for a nodes edges
-#define BETA 5
+#define BETA 50000
 #define MAXWEIGHT 100 // Max allowed weight
 
 using namespace std;
@@ -54,7 +54,8 @@ struct pair_hash {
 static int remove_old_graphs() {
   namespace fs = std::filesystem;
 
-  std::string directory = "./"; // Change to your target directory if needed
+  std::string directory =
+      "./graphs/"; // Change to your target directory if needed
   std::regex pattern("^graph.*\\.txt$");
 
   try {
@@ -78,8 +79,8 @@ static int remove_old_graphs() {
 
 int insert_metadata(uint32_t num_of_edges) {
   cout << '\n';
-  std::string filename = "graph0.txt";
-  std::string temp_filename = "temp_graph0.txt";
+  std::string filename = "graphs/graph0.txt";
+  std::string temp_filename = "graphs/temp_graph0.txt";
 
   std::ifstream input_file(filename);
   std::ofstream temp_file(temp_filename);
@@ -167,7 +168,7 @@ int main() {
     }
 
     if (graph.size() > EDGES_PER_CHUNK || i == PROSUMERS - 1) {
-      string file = "graph" + to_string(chunk) + ".txt";
+      string file = "graphs/graph" + to_string(chunk) + ".txt";
 
       ofstream stream; // To Write into a File, Use "ofstream"
       stream.open(file);
