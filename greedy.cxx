@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -12,6 +13,8 @@
 #include <unordered_set>
 #include <vector>
 
+#define L_VALUE 10000
+
 using namespace std;
 using Producer = u_int32_t;
 using Consumer = u_int32_t;
@@ -21,36 +24,8 @@ u_long nrProducers;
 u_long nrConsumers;
 u_long nrEdges;
 u_long graph_size;
-u_int32_t l_value = 10000;
 unordered_set<Consumer> matched_consumers;
 unordered_map<Producer, Weight> all_matches;
-
-void read_metadata() {
-
-  std::string filename = "graph" + std::to_string(0) + ".txt";
-  std::ifstream chunk_stream(filename);
-  std::string inputstr;
-
-  getline(chunk_stream, inputstr, '\n');
-  std::istringstream input;
-  input.str(inputstr);
-
-  std::string sRows, sColumns, sEdges;
-  getline(input, sRows, ' ');
-  getline(input, sColumns, ' ');
-  getline(input, sEdges, ' ');
-
-  // could increment these by one inorder to not have to do weirdness in the
-  // loops later one
-  cout << sRows << '\n' << sColumns;
-  nrProducers = stoul(sRows);
-  nrConsumers = stoul(sColumns);
-  nrEdges = stoul(sEdges);
-  graph_size = nrProducers + nrConsumers;
-
-  std::cout << "read metadata" << '\n';
-  chunk_stream.close();
-}
 
 Chunk read_chunk(u_int32_t chunk) {
   Chunk neighborhoods;
@@ -62,11 +37,11 @@ Chunk read_chunk(u_int32_t chunk) {
     return neighborhoods;
   }
   string line;
+  // read metadata of first line of first chunk
   if (chunk == 0) {
     getline(chunk_stream, line, '\n');
     std::istringstream input;
     input.str(line);
-    cout << "line is : " << line << '\n';
 
     std::string sRows, sColumns, sEdges;
     getline(input, sRows, ' ');
@@ -100,7 +75,7 @@ void match_chunk(Chunk chunk) {
     tuple<Consumer, Weight> best_match = {nrConsumers + 1, 0};
     u_int32_t checked_edges = 0;
     for (const auto &[consumer, weight] : edges) {
-      if (checked_edges > l_value) {
+      if (checked_edges > L_VALUE) {
         break;
       }
       if (matched_consumers.find(consumer) != matched_consumers.end()) {
@@ -120,8 +95,9 @@ void match_chunk(Chunk chunk) {
 
 int main() {
 
+  std::cout.imbue(std::locale("en_US.UTF-8")); // Use thousands separator
+  auto start = chrono::high_resolution_clock::now();
   u_int32_t chunk_number = 0;
-  // read_metadata();
 
   Chunk chunk_neighborhoods = read_chunk(chunk_number);
   while (!chunk_neighborhoods.empty()) {
@@ -140,5 +116,8 @@ int main() {
   cout << "\nsize of matches is: " << all_matches.size() << '\n';
 
   cout << "Max weight is : " << max_weight << '\n';
+  auto stop = chrono::high_resolution_clock::now();
+  const chrono::duration<double> elapsed_seconds{stop - start};
+  cout << "\nExecution time: " << elapsed_seconds.count() << " seconds" << '\n';
   return 0;
 }
