@@ -16,10 +16,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #add_compile_options(-fsanitize=address)
 #add_link_options(-fsanitize=address)
 
-add_executable(Matching matching.cxx)
+add_executable(Greedy greedy.cxx)
 
-find_package(PythonLibs REQUIRED)
-include_directories(${PYTHON_INCLUDE_DIRS})
-target_link_libraries(Matching ${PYTHON_LIBRARIES})
+
+
 
 #target_include_directories(Tutorial PUBLIC "${PROJECT_BINARY_DIR}")
