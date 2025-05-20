@@ -10,6 +10,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
+#include <list>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -20,7 +22,7 @@
 #include <utility>
 #include <vector>
 
-// #define SIZE 20
+#define MAX_SIZE_SHARD 1000000 // baseline value
 
 u_int32_t graphSize = 0;
 u_int32_t nrProducers = 0;
@@ -31,34 +33,13 @@ using Weight = uint32_t;
 using Pair = std::tuple<uint32_t, uint32_t, uint32_t>;
 using Pairing = std::vector<std::vector<Pair>>;
 
-struct pair_equal {
-  bool operator()(const std::pair<int, int> &lhs,
-                  const std::pair<int, int> &rhs) const {
-    return (lhs.first == rhs.first && lhs.second == rhs.second) ||
-           (lhs.first == rhs.second && lhs.second == rhs.first);
-  }
-};
-
-struct pair_hash {
-  size_t operator()(const std::pair<int, int> &p) const {
-    uint64_t a = static_cast<uint32_t>(std::min(p.first, p.second));
-    uint64_t b = static_cast<uint32_t>(std::max(p.second, p.first));
-    u_int64_t hash = (a << 32) | (b);
-    // cout << "a = " << p.first << " and b = " << p.second << " and hash is "
-    // << hash << "\n";
-    return hash;
-  }
-};
 using Edge = std::pair<u_int32_t, u_int32_t>;
-using Graph = std::unordered_map<std::pair<u_int32_t, u_int32_t>, Weight,
-                                 pair_hash, pair_equal>;
 using Neighborhood = std::unordered_map<u_int32_t, std::vector<Edge>>;
 Neighborhood producerNeighborhoods;
 Neighborhood consumerNeighborhoods;
 
 // namespace {
 std::vector<Pair> greedy();
-int test(Graph graph);
 Pairing doubleGreedy();
 
 Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
@@ -71,10 +52,8 @@ Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
 //                                          bool typeNode, bool consumer[],
 //                                          bool producer[]);
 // } // namespace
-const static auto make_edge = [](int a, int b) {
-  return std::make_pair(std::min(a, b), std::max(a, b));
-};
 
+// appearently shouldnt be needed
 template <class Archive> void serialize(Archive &arx, Edge &edge) {
   arx(edge.first, edge.second); // Serialize both elements of the pair
 }
@@ -85,6 +64,146 @@ public:
   template <class Archive> void serialize(Archive &arx) { arx(hoods); }
 };
 
+using Shard = Neighborhood2;
+
+class Manager {
+public:
+  static std::vector<Edge> getProducerNeighborhood(u_int32_t producer) {
+    // std::cout << producer << '\n';
+    u_int32_t producersShardNr = producer / shardSize;
+
+    Shard &producerShard = getShard(producersShardNr);
+
+    // grab the specific hood
+    auto kvpair = producerShard.hoods.find(producer);
+
+    // check if it doesnt exist
+    // in this case send a dummy value back for now
+    if (kvpair == producerShard.hoods.end()) {
+      std::cout << "Didnt find a neighborhood" << '\n';
+      std::vector<Edge> dummy;
+      dummy.emplace_back(0, 0);
+      return dummy;
+    }
+
+    // otherwise just return it
+    // note that first should be equal to producer here
+    // otherwise we got the wrong neighborhood
+    assert(kvpair->first == producer);
+    return kvpair->second;
+  }
+
+  static void addProducer(u_int32_t producer, u_int32_t consumer,
+                          u_int32_t weight) {
+    u_int32_t producersShardNr = producer / shardSize;
+    Shard &producerShard = getShard(producersShardNr);
+
+    // std::cout << "Before: " << producerShard.hoods.size() << '\n';
+    producerShard.hoods[producer].emplace_back(consumer, weight);
+    // std::cout << "After: " << producerShard.hoods.size() << '\n';
+    /*
+    // Does this neighborhood already exist?
+    auto kvpair = producerShard.hoods.find(producer);
+
+    std::vector<Edge> tmp;
+    // if it does exist extract it first
+    if (kvpair != producerShard.hoods.end()) {
+      tmp = producerShard.hoods[producer];
+    }
+
+    // then add the new entry and insert it back into the map
+    tmp.emplace_back(consumer, weight);
+    producerShard.hoods[producer] = tmp;
+    */
+  }
+
+private:
+  using ListIt = std::list<u_int32_t>::iterator;
+
+  struct CacheEntry {
+    Shard shard;
+    ListIt lruIt;
+  };
+
+  static Shard &getShard(u_int32_t shardId) {
+    auto mapIt = cache.find(shardId);
+
+    // Shard is loaded currently
+    // Move to back of LRU list
+    // then early return it
+    if (mapIt != cache.end()) {
+      lru.erase(mapIt->second.lruIt);
+      lru.push_back(shardId);
+      mapIt->second.lruIt = std::prev(lru.end());
+      return mapIt->second.shard;
+    }
+
+    // Cache miss so load and evict if needed
+    if (cache.size() >= max_cache_size) {
+      evictLRU();
+    }
+
+    Shard shard;
+
+    // does the requested shard exist already?
+    auto setIt = existingShards.find(shardId);
+    if (setIt != existingShards.end()) {
+      // if the shard does exist load it
+      shard = loadShard(shardId);
+    } else {
+      // otherwise mark it as existing and send a new shard back
+      existingShards.insert(shardId);
+    }
+
+    lru.push_back(shardId);
+    cache[shardId] = {shard, std::prev(lru.end())};
+    return cache[shardId].shard;
+  }
+
+  static void evictLRU() {
+    u_int32_t evictedShard = lru.front();
+    lru.pop_front();
+    saveShard(evictedShard);
+    cache.erase(evictedShard);
+  }
+
+  // saves a shard to the disk and clears it from the map
+  static void saveShard(u_int32_t shardToSave) {
+
+    // std::cout << "Saving shard " << shardToSave << '\n';
+    const auto &shard = cache[shardToSave].shard;
+    // std::cout << "Saving shard with " << shard.hoods.size()
+    // << " neighborhoods.\n";
+    std::ofstream file("shards/map" + std::to_string(shardToSave) + ".bin",
+                       std::ios::binary);
+    cereal::BinaryOutputArchive archive(file);
+    archive(cache[shardToSave].shard);
+    cache.erase(shardToSave);
+  }
+
+  // loads the requested shard and returns it
+  static Shard loadShard(u_int32_t shard) {
+    std::cout << "Loading shard " << shard << '\n';
+    std::ifstream file("shards/map" + std::to_string(shard) + ".bin",
+                       std::ios::binary);
+    cereal::BinaryInputArchive archive(file);
+    Shard tmp;
+    archive(tmp);
+    return tmp;
+  }
+
+  static inline std::unordered_map<u_int32_t, CacheEntry> cache;
+  static inline std::list<u_int32_t> lru;
+  static inline std::unordered_set<u_int32_t> existingShards;
+  static inline size_t max_cache_size = 10;  // this value is in shards
+  static inline u_int32_t shardSize = 10000; // while this value is in producers
+
+  Manager() = default;
+  Manager(const Manager &) = delete;
+  Manager &operator=(const Manager &) = delete;
+};
+
+/*
 class ShardMapNew {
   static inline Neighborhood2 producerShard;
   // Neighborhood consumerShard;
@@ -112,6 +231,7 @@ public:
       // if there is an active shard save it to the disk
       if (ShardMapNew::active) {
         ShardMapNew::saveShard();
+        std::cout << "Created Shard: " << shardOfProducer << '\n';
       }
       // when the current shard is inactive make sure to set its number
       // and activate it
@@ -143,7 +263,7 @@ public:
   // and dont overwrite a preexisting shard by mistake
   static void saveShard() {
 
-    // std::cout << "Saving shard " << activeShard << '\n';
+    std::cout << "Saving shard " << activeShard << '\n';
 
     // this is here so that you dont overwrite a shard by manually performing a
     // saveShard into a loadShard without realizing that loadShard performs a
@@ -174,7 +294,7 @@ public:
       return;
     }
     ShardMapNew::saveShard();
-    // std::cout << "Loading shard " << shard << '\n';
+    std::cout << "Loading shard " << shard << '\n';
     std::ifstream file("shards/map" + std::to_string(shard) + ".bin",
                        std::ios::binary);
     cereal::BinaryInputArchive archive(file);
@@ -206,13 +326,13 @@ public:
     return kvpair->second;
   }
 };
-
+*/
 static int remove_old_shards() {
   namespace fs = std::filesystem;
   fs::create_directory("shards");
   std::string directory =
       "./shards/"; // Change to your target directory if needed
-  std::regex pattern("^shard.*\\.bin$");
+  std::regex pattern("^map.*\\.bin$");
 
   try {
     for (const auto &entry : fs::directory_iterator(directory)) {
@@ -233,7 +353,7 @@ static int remove_old_shards() {
   return 0;
 }
 
-void setUpMap(u_int32_t chunks) {
+void setUpMap() {
   remove_old_shards();
   // standard first shard naming maybe change this later?
   std::string filename = "graph0.txt";
@@ -263,11 +383,17 @@ void setUpMap(u_int32_t chunks) {
 
   std::cout << "metadata setup done" << '\n';
 
-  for (u_int32_t i = 0; i < chunks; i++) {
+  // In a way this is just a while loop maybe I should make it one
+  for (u_int32_t i = 0; i < std::numeric_limits<u_int32_t>::max(); i++) {
     std::string filename = "graph" + std::to_string(i) + ".txt";
     std::ifstream graphFile(filename);
     std::string inputstr;
 
+    // if the file wasn't opened it is almost always because there are no more
+    // chunks so the task is done and we should return
+    if (!graphFile.is_open()) {
+      return;
+    }
     // metadata only gets added to file 0 for now?
     // maybe we should concilidate into a metadata only file then?
     if (i == 0) {
@@ -288,7 +414,7 @@ void setUpMap(u_int32_t chunks) {
       getline(input, weight, ' ');
 
       // trying a adjacency list approach
-      // first check if an enntry already exists
+      // first check if an entry already exists
       // if it does extract it and this node to that neighborhood and read it
 
       u_int32_t producer = 1 + u_int32_t(stoul(node1));
@@ -296,7 +422,8 @@ void setUpMap(u_int32_t chunks) {
       u_int32_t edgeWeight = u_int32_t(stoul(weight));
 
       // std::cout << producer << ' ' << consumer << ' ' << edgeWeight << '\n';
-      ShardMapNew::addProducer(producer, consumer, edgeWeight);
+      // ShardMapNew::addProducer(producer, consumer, edgeWeight);
+      Manager::addProducer(producer, consumer, edgeWeight);
       // std::cout << ShardMapNew::getProducerNeighborhood(producer).size()
       // << '\n';
       // std::cout << "added producers from shard: " << i << '\n';
@@ -315,37 +442,10 @@ int main(int argc, char *argv[]) {
       useDouble = true;
     }
   }
+  auto start1 = std::chrono::high_resolution_clock::now();
+  setUpMap();
 
-  ShardMapNew::shardCount = 500000;
-  setUpMap(3897);
-  // auto tmp = ShardMapNew::getProducerNeighborhood(10);
-  // std::cout << tmp[0].first << ' ' << tmp[0].second << '\n';
-  // return 0;
-
-  std::string filename = "graph" + std::to_string(0) + ".txt";
-  std::ifstream graphFile(filename);
-  std::string inputstr;
-
-  Graph graph;
-  getline(graphFile, inputstr);
-  std::istringstream input;
-  input.str(inputstr);
-
-  std::string sRows, sColumns, sAmount;
-  getline(input, sRows, ' ');
-  getline(input, sColumns, ' ');
-  getline(input, sAmount, ' ');
-
-  // could increment these by one inorder to not have to do weirdness in the
-  // loops later on
-  nrProducers = stoul(sRows);
-  nrConsumers = stoul(sColumns);
-  entries = stoul(sAmount);
-  graphSize = nrProducers + nrConsumers;
-
-  std::cout << "read metadata" << '\n';
-
-  // test(graph);
+  auto start2 = std::chrono::high_resolution_clock::now();
 
   std::cout << "Matching" << '\n';
   Pairing result;
@@ -356,6 +456,7 @@ int main(int argc, char *argv[]) {
   } else {
     resultNormal = greedy();
   }
+  auto stop = std::chrono::high_resolution_clock::now();
   std::cout << "Finished Matching" << '\n';
   /*
   //testcode for the print below
@@ -401,74 +502,29 @@ int main(int argc, char *argv[]) {
     }
     std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
   }
+  const std::chrono::duration<double> elapsed_seconds1{start2 - start1};
+  const std::chrono::duration<double> elapsed_seconds2{stop - start2};
+  std::cout << "\nExecution time setup: " << elapsed_seconds1.count()
+            << " seconds" << '\n';
+  std::cout << "\nExecution time matching: " << elapsed_seconds2.count()
+            << " seconds" << '\n';
   return 0;
 }
 
-int readShard(u_int32_t shardNumber) {
-  std::string filename = "graph" + std::to_string(shardNumber) + ".txt";
-  std::ifstream graphFile(filename);
-  std::string inputstr;
-
-  Graph graph;
-  getline(graphFile, inputstr);
-  // this line only contains metadata we should already know
-  // therefore no need to process
-
-  while (getline(graphFile, inputstr)) {
-    // std::cout << inputstr << '\n';
-    std::istringstream input;
-    input.str(inputstr);
-    if (inputstr.empty()) {
-      continue;
-    }
-
-    std::string node1, node2, weight;
-    getline(input, node1, ' ');
-    getline(input, node2, ' ');
-    getline(input, weight, ' ');
-    // cout << node1 << "\t" << node2 << "\t" << weight << "\n";
-
-    graph[{stoul(node1), stoul(node2)}] = u_int32_t(stoul(weight));
-    // this isnt used anywhere as far as I remember
-
-    // trying a adjacency list approach
-    // first check if an enntry already exists
-    // if it does extract it and this node to that neighborhood and read it
-
-    u_int32_t producer = 1 + u_int32_t(stoul(node1));
-    u_int32_t consumer = 1 + u_int32_t(stoul(node2));
-    u_int32_t edgeWeight = u_int32_t(stoul(weight));
-
-    std::vector<Edge> tmp;
-    if (producerNeighborhoods.count(producer) != 0u) {
-      tmp = producerNeighborhoods[producer];
-    }
-    tmp.emplace_back(consumer, edgeWeight);
-    producerNeighborhoods[producer] = tmp;
-
-    tmp.clear();
-    if (consumerNeighborhoods.count(consumer) != 0u) {
-      tmp = consumerNeighborhoods[consumer];
-    }
-    tmp.emplace_back(producer, edgeWeight);
-    consumerNeighborhoods[consumer] = tmp;
-  }
-  return 0;
-}
 std::vector<Pair> greedy() {
   std::vector<Pair> matching;
 
   // this approach is ugly but havent seen any good options
   //  init and set all nodes as available
-  std::pmr::unordered_set<u_int32_t> consumers;
-  std::pmr::unordered_set<u_int32_t> producers;
+  std::unordered_set<u_int32_t> consumers;
+  std::unordered_set<u_int32_t> producers;
 
   std::vector<std::pair<u_int32_t, u_int32_t>> neighbors;
   for (u_int32_t i = 1; i < nrProducers + 1; i++) {
     if (producers.find(i) != producers.end()) {
       continue;
     }
-    neighbors = ShardMapNew::getProducerNeighborhood(i);
+    neighbors = Manager::getProducerNeighborhood(i);
     u_int32_t highestWeight = 0;
     u_int32_t highestIndex = 0;
     for (std::pair<u_int32_t, u_int32_t> neighbor : neighbors) {
@@ -494,7 +550,7 @@ std::vector<Pair> greedy() {
 Pairing doubleGreedy() {
   Pairing matching;
 
-  readShard(0);
+  // readShard(0);
 
   // init and set all nodes as available
   bool consumers[nrConsumers];
@@ -632,17 +688,4 @@ Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
   // cout << "Updating availability" << '\n';
 
   return std::make_pair(highestIndex, highestWeight);
-}
-
-// to test whether the graph was read in correctly
-int test(Graph graph) {
-  std::string file = "graphtest.txt";
-  std::ofstream stream; // To Write into a File, Use "ofstream"
-  stream.open(file);
-  for (const auto &[key, value] : graph) {
-    stream << key.first << " " << key.second << " " << value << '\n';
-  }
-  stream.close();
-
-  return 0;
 }
