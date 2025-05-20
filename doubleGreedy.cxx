@@ -22,8 +22,6 @@
 #include <utility>
 #include <vector>
 
-#define MAX_SIZE_SHARD 1000000 // baseline value
-
 u_int32_t graphSize = 0;
 u_int32_t nrProducers = 0;
 u_int32_t nrConsumers = 0;
@@ -34,16 +32,15 @@ using Pair = std::tuple<uint32_t, uint32_t, uint32_t>;
 using Pairing = std::vector<std::vector<Pair>>;
 
 using Edge = std::pair<u_int32_t, u_int32_t>;
-using Neighborhood = std::unordered_map<u_int32_t, std::vector<Edge>>;
-Neighborhood producerNeighborhoods;
-Neighborhood consumerNeighborhoods;
+// using Neighborhood = std::unordered_map<u_int32_t, std::vector<Edge>>;
 
 // namespace {
 std::vector<Pair> greedy();
 Pairing doubleGreedy();
 
-Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
-              bool consumers[], bool producers[],
+Edge nextEdge(u_int32_t node, bool typeNode,
+              std::unordered_set<u_int32_t> consumers,
+              std::unordered_set<u_int32_t> producers,
               std::unordered_set<u_int32_t> consumerInPath,
               std::unordered_set<u_int32_t> producerInPath);
 
@@ -58,13 +55,13 @@ template <class Archive> void serialize(Archive &arx, Edge &edge) {
   arx(edge.first, edge.second); // Serialize both elements of the pair
 }
 
-class Neighborhood2 {
+class Neighborhood {
 public:
   std::unordered_map<u_int32_t, std::vector<Edge>> hoods;
   template <class Archive> void serialize(Archive &arx) { arx(hoods); }
 };
 
-using Shard = Neighborhood2;
+using Shard = Neighborhood;
 
 class Manager {
 public:
@@ -72,7 +69,7 @@ public:
     // std::cout << producer << '\n';
     u_int32_t producersShardNr = producer / shardSize;
 
-    Shard &producerShard = getShard(producersShardNr);
+    Shard &producerShard = getProducerShard(producersShardNr);
 
     // grab the specific hood
     auto kvpair = producerShard.hoods.find(producer);
@@ -93,28 +90,48 @@ public:
     return kvpair->second;
   }
 
+  static std::vector<Edge> getConsumerNeighborhood(u_int32_t consumer) {
+    u_int32_t consumersShardNr = consumer / shardSize;
+
+    Shard &consumerShard = getConsumerShard(consumersShardNr);
+
+    // grab the specific hood
+    auto kvpair = consumerShard.hoods.find(consumer);
+
+    // check if it doesnt exist
+    // in this case send a dummy value back for now
+    if (kvpair == consumerShard.hoods.end()) {
+      std::cout << "Didnt find a neighborhood" << '\n';
+      std::vector<Edge> dummy;
+      dummy.emplace_back(0, 0);
+      return dummy;
+    }
+
+    // otherwise just return it
+    // note that first should be equal to consumer here
+    // otherwise we got the wrong neighborhood
+    assert(kvpair->first == consumer);
+    return kvpair->second;
+  }
+
+  // adds the specified edge to the producers neighborhood
   static void addProducer(u_int32_t producer, u_int32_t consumer,
                           u_int32_t weight) {
     u_int32_t producersShardNr = producer / shardSize;
-    Shard &producerShard = getShard(producersShardNr);
+    Shard &producerShard = getProducerShard(producersShardNr);
+
+    producerShard.hoods[producer].emplace_back(consumer, weight);
+  }
+
+  // adds the specified edge to the consumers neighborhood
+  static void addConsumer(u_int32_t consumer, u_int32_t producer,
+                          u_int32_t weight) {
+    u_int32_t consumersShardNr = consumer / shardSize;
+    Shard &consumerShard = getConsumerShard(consumersShardNr);
 
     // std::cout << "Before: " << producerShard.hoods.size() << '\n';
-    producerShard.hoods[producer].emplace_back(consumer, weight);
+    consumerShard.hoods[consumer].emplace_back(producer, weight);
     // std::cout << "After: " << producerShard.hoods.size() << '\n';
-    /*
-    // Does this neighborhood already exist?
-    auto kvpair = producerShard.hoods.find(producer);
-
-    std::vector<Edge> tmp;
-    // if it does exist extract it first
-    if (kvpair != producerShard.hoods.end()) {
-      tmp = producerShard.hoods[producer];
-    }
-
-    // then add the new entry and insert it back into the map
-    tmp.emplace_back(consumer, weight);
-    producerShard.hoods[producer] = tmp;
-    */
   }
 
 private:
@@ -125,66 +142,122 @@ private:
     ListIt lruIt;
   };
 
-  static Shard &getShard(u_int32_t shardId) {
-    auto mapIt = cache.find(shardId);
-
+  static Shard &getProducerShard(u_int32_t shardId) {
+    auto mapIt = cacheProducer.find(shardId);
     // Shard is loaded currently
     // Move to back of LRU list
     // then early return it
-    if (mapIt != cache.end()) {
-      lru.erase(mapIt->second.lruIt);
-      lru.push_back(shardId);
-      mapIt->second.lruIt = std::prev(lru.end());
+    if (mapIt != cacheProducer.end()) {
+      lruProducer.erase(mapIt->second.lruIt);
+      lruProducer.push_back(shardId);
+      mapIt->second.lruIt = std::prev(lruProducer.end());
       return mapIt->second.shard;
     }
 
     // Cache miss so load and evict if needed
-    if (cache.size() >= max_cache_size) {
-      evictLRU();
+    if (cacheProducer.size() >= max_cache_size) {
+      evictLRUProducer();
     }
-
     Shard shard;
 
     // does the requested shard exist already?
-    auto setIt = existingShards.find(shardId);
-    if (setIt != existingShards.end()) {
+    auto setIt = existingShardsProducer.find(shardId);
+    if (setIt != existingShardsProducer.end()) {
       // if the shard does exist load it
-      shard = loadShard(shardId);
+      shard = loadShard(shardId, true);
     } else {
       // otherwise mark it as existing and send a new shard back
-      existingShards.insert(shardId);
+      existingShardsProducer.insert(shardId);
     }
 
-    lru.push_back(shardId);
-    cache[shardId] = {shard, std::prev(lru.end())};
-    return cache[shardId].shard;
+    lruProducer.push_back(shardId);
+    cacheProducer[shardId] = {shard, std::prev(lruProducer.end())};
+    return cacheProducer[shardId].shard;
   }
 
-  static void evictLRU() {
-    u_int32_t evictedShard = lru.front();
-    lru.pop_front();
-    saveShard(evictedShard);
-    cache.erase(evictedShard);
+  static Shard &getConsumerShard(u_int32_t shardId) {
+    auto mapIt = cacheConsumer.find(shardId);
+    // Shard is loaded currently
+    // Move to back of LRU list
+    // then early return it
+    if (mapIt != cacheConsumer.end()) {
+      lruConsumer.erase(mapIt->second.lruIt);
+      lruConsumer.push_back(shardId);
+      mapIt->second.lruIt = std::prev(lruConsumer.end());
+      return mapIt->second.shard;
+    }
+
+    // Cache miss so load and evict if needed
+    if (cacheConsumer.size() >= max_cache_size) {
+      evictLRUConsumer();
+    }
+    Shard shard;
+
+    // does the requested shard exist already?
+    auto setIt = existingShardsConsumer.find(shardId);
+    if (setIt != existingShardsConsumer.end()) {
+      // if the shard does exist load it
+      shard = loadShard(shardId, false);
+    } else {
+      // otherwise mark it as existing and send a new shard back
+      existingShardsConsumer.insert(shardId);
+    }
+
+    lruConsumer.push_back(shardId);
+    cacheConsumer[shardId] = {shard, std::prev(lruConsumer.end())};
+    return cacheConsumer[shardId].shard;
   }
 
-  // saves a shard to the disk and clears it from the map
-  static void saveShard(u_int32_t shardToSave) {
+  static void evictLRUProducer() {
+    u_int32_t evictedShard = lruProducer.front();
+    lruProducer.pop_front();
+    saveProducerShard(evictedShard);
+    cacheProducer.erase(evictedShard);
+  }
 
-    // std::cout << "Saving shard " << shardToSave << '\n';
-    const auto &shard = cache[shardToSave].shard;
-    // std::cout << "Saving shard with " << shard.hoods.size()
-    // << " neighborhoods.\n";
-    std::ofstream file("shards/map" + std::to_string(shardToSave) + ".bin",
+  static void evictLRUConsumer() {
+    u_int32_t evictedShard = lruConsumer.front();
+    lruConsumer.pop_front();
+    saveConsumerShard(evictedShard);
+    cacheConsumer.erase(evictedShard);
+  }
+
+  // saves a producer shard to the disk and clears it from the map
+  static void saveProducerShard(u_int32_t shardToSave) {
+
+    std::ofstream file("shards/producerShard" + std::to_string(shardToSave) +
+                           ".bin",
                        std::ios::binary);
     cereal::BinaryOutputArchive archive(file);
-    archive(cache[shardToSave].shard);
-    cache.erase(shardToSave);
+    archive(cacheProducer[shardToSave].shard);
+    cacheProducer.erase(shardToSave);
+  }
+
+  // saves a consumer shard to the disk and clears it from the map
+  static void saveConsumerShard(u_int32_t shardToSave) {
+
+    std::ofstream file("shards/consumerShard" + std::to_string(shardToSave) +
+                           ".bin",
+                       std::ios::binary);
+    cereal::BinaryOutputArchive archive(file);
+    archive(cacheConsumer[shardToSave].shard);
+    cacheConsumer.erase(shardToSave);
   }
 
   // loads the requested shard and returns it
-  static Shard loadShard(u_int32_t shard) {
+  static Shard loadShard(u_int32_t shard, bool isProducer) {
     std::cout << "Loading shard " << shard << '\n';
-    std::ifstream file("shards/map" + std::to_string(shard) + ".bin",
+
+    // Determines if a producer or consumer shard is loaded
+    std::string middle;
+    if (isProducer) {
+      middle = "producer";
+    } else {
+      middle = "consumer";
+    }
+
+    std::ifstream file("shards/" + middle + "Shard" + std::to_string(shard) +
+                           ".bin",
                        std::ios::binary);
     cereal::BinaryInputArchive archive(file);
     Shard tmp;
@@ -192,9 +265,12 @@ private:
     return tmp;
   }
 
-  static inline std::unordered_map<u_int32_t, CacheEntry> cache;
-  static inline std::list<u_int32_t> lru;
-  static inline std::unordered_set<u_int32_t> existingShards;
+  static inline std::unordered_map<u_int32_t, CacheEntry> cacheConsumer;
+  static inline std::unordered_map<u_int32_t, CacheEntry> cacheProducer;
+  static inline std::list<u_int32_t> lruConsumer;
+  static inline std::list<u_int32_t> lruProducer;
+  static inline std::unordered_set<u_int32_t> existingShardsConsumer;
+  static inline std::unordered_set<u_int32_t> existingShardsProducer;
   static inline size_t max_cache_size = 10;  // this value is in shards
   static inline u_int32_t shardSize = 10000; // while this value is in producers
 
@@ -203,157 +279,22 @@ private:
   Manager &operator=(const Manager &) = delete;
 };
 
-/*
-class ShardMapNew {
-  static inline Neighborhood2 producerShard;
-  // Neighborhood consumerShard;
-  static inline std::unordered_set<u_int32_t> existingShards;
-  static inline u_int32_t activeShard;
-  static inline bool active = false;
-
-public:
-  ShardMapNew() = delete;
-
-  static inline u_int32_t shardCount;
-
-  static void addProducer(u_int32_t producer, u_int32_t consumer,
-                          u_int32_t weight) {
-
-    u_int32_t shardOfProducer = producer / ShardMapNew::shardCount;
-    // std::cout << "shard: " << shardOfProducer << '\n';
-
-    // if the shard is already in the set this returns false
-    // otherwise it adds it to the set and returns true
-    auto [unused, added] = existingShards.insert(shardOfProducer);
-
-    // this means a new shard needs to be created
-    if (added) {
-      // if there is an active shard save it to the disk
-      if (ShardMapNew::active) {
-        ShardMapNew::saveShard();
-        std::cout << "Created Shard: " << shardOfProducer << '\n';
-      }
-      // when the current shard is inactive make sure to set its number
-      // and activate it
-      ShardMapNew::active = true;
-      ShardMapNew::activeShard = shardOfProducer;
-
-      // std::cout << "Creating shard " << shardOfProducer << '\n';
-      // build the new vector and add it to the map
-      std::vector<Edge> tmpVector;
-      tmpVector.emplace_back(consumer, weight);
-      ShardMapNew::producerShard.hoods[producer] = tmpVector;
-
-    }
-
-    // shard already exists so just load it
-    else {
-      ShardMapNew::loadShard(shardOfProducer);
-      std::vector<Edge> tmpVector = ShardMapNew::producerShard.hoods[producer];
-      tmpVector.emplace_back(consumer, weight);
-      ShardMapNew::producerShard.hoods[producer] = tmpVector;
-      // std::cout << "producers in map: "
-      // << ShardMapNew::producerShard.hoods.size() << '\n';
-    }
-    // std::cout << ShardMapNew::producerShard.size() << '\n';
-  }
-
-  // saves current shard to the disk and clears the map
-  // make sure that you dont use this correctly
-  // and dont overwrite a preexisting shard by mistake
-  static void saveShard() {
-
-    std::cout << "Saving shard " << activeShard << '\n';
-
-    // this is here so that you dont overwrite a shard by manually performing a
-    // saveShard into a loadShard without realizing that loadShard performs a
-    // saveShard implicitly
-    if (!active) {
-      return;
-    }
-
-    std::ofstream file("shards/map" + std::to_string(ShardMapNew::activeShard) +
-                           ".bin",
-                       std::ios::binary);
-    cereal::BinaryOutputArchive archive(file);
-    archive(ShardMapNew::producerShard);
-    ShardMapNew::producerShard.hoods.clear();
-    ShardMapNew::active = false;
-  }
-
-  // loads the shard
-  // if the shard is already loaded nothing happens
-  // if the shard is not loaded then the old shard is saved
-  // and then the new one is loaded
-  static void loadShard(u_int32_t shard) {
-
-    // std::cout << "Fake Loading shard " << shard << '\n';
-    // only early return when the existing shard is the correct one and
-    // it is active
-    if (shard == ShardMapNew::activeShard && ShardMapNew::active) {
-      return;
-    }
-    ShardMapNew::saveShard();
-    std::cout << "Loading shard " << shard << '\n';
-    std::ifstream file("shards/map" + std::to_string(shard) + ".bin",
-                       std::ios::binary);
-    cereal::BinaryInputArchive archive(file);
-    archive(ShardMapNew::producerShard);
-    ShardMapNew::active = true;
-    ShardMapNew::activeShard = shard;
-  }
-
-  static std::vector<Edge> getProducerNeighborhood(u_int32_t producer) {
-    // std::cout << producer << '\n';
-    u_int32_t producersShard = producer / ShardMapNew::shardCount;
-    ShardMapNew::loadShard(producersShard);
-
-    // grab the specific hood
-    auto kvpair = ShardMapNew::producerShard.hoods.find(producer);
-
-    // check if it doesnt exist
-    // in this case send a dummy value back for now
-    if (kvpair == ShardMapNew::producerShard.hoods.end()) {
-      std::cout << "Didnt find a neighborhood" << '\n';
-      std::vector<Edge> dummy;
-      dummy.emplace_back(0, 0);
-      return dummy;
-    }
-    // otherwise just return it
-    // note that first should be equal to producer here
-    // otherwise we got the wrong neighborhood
-    assert(kvpair->first == producer);
-    return kvpair->second;
-  }
-};
-*/
 static int remove_old_shards() {
   namespace fs = std::filesystem;
-  fs::create_directory("shards");
-  std::string directory =
-      "./shards/"; // Change to your target directory if needed
-  std::regex pattern("^map.*\\.bin$");
+  std::string directory = "./shards/";
 
-  try {
-    for (const auto &entry : fs::directory_iterator(directory)) {
-      if (fs::is_regular_file(entry.status())) {
-        std::string filename = entry.path().filename().string();
-        if (std::regex_match(filename, pattern)) {
-          std::cout << "Removing: " << entry.path() << '\n';
-          fs::remove(entry.path());
-        }
-      }
-    }
-  } catch (const fs::filesystem_error &e) {
-    std::cerr << "Filesystem error: " << e.what() << '\n';
-  } catch (const std::regex_error &e) {
-    std::cerr << "Regex error: " << e.what() << '\n';
+  // Create the directory if it doesn't exist
+  fs::create_directory(directory);
+
+  // Iterate and remove all files in the directory
+  for (const auto &entry : fs::directory_iterator(directory)) {
+    fs::remove(entry);
   }
-
+  std::cout << "removed old shards" << '\n';
   return 0;
 }
 
-void setUpMap() {
+void setUpMap(bool useDouble) {
   remove_old_shards();
   // standard first shard naming maybe change this later?
   std::string filename = "graph0.txt";
@@ -371,13 +312,15 @@ void setUpMap() {
   }
 
   std::cout << "metadata setup start" << '\n';
-  std::string c, p, e;
-  getline(input, c, ' ');
+  std::string p, c, e;
   getline(input, p, ' ');
+  getline(input, c, ' ');
   getline(input, e, ' ');
 
-  nrConsumers = u_int32_t(std::stoul(c));
+  // note above is the correct order of the entries
+  // did the wrong order in an earlier version
   nrProducers = u_int32_t(std::stoul(p));
+  nrConsumers = u_int32_t(std::stoul(c));
   entries = u_int32_t(std::stoul(e));
   graphSize = nrProducers + nrConsumers; // is this still used though?
 
@@ -421,21 +364,21 @@ void setUpMap() {
       u_int32_t consumer = 1 + u_int32_t(stoul(node2));
       u_int32_t edgeWeight = u_int32_t(stoul(weight));
 
-      // std::cout << producer << ' ' << consumer << ' ' << edgeWeight << '\n';
-      // ShardMapNew::addProducer(producer, consumer, edgeWeight);
+      // std::cout << producer << ' ' << consumer << ' ' << edgeWeight <<
+      // '\n'; ShardMapNew::addProducer(producer, consumer, edgeWeight);
       Manager::addProducer(producer, consumer, edgeWeight);
+      if (useDouble) {
+        Manager::addConsumer(consumer, producer, edgeWeight);
+      }
       // std::cout << ShardMapNew::getProducerNeighborhood(producer).size()
       // << '\n';
       // std::cout << "added producers from shard: " << i << '\n';
-
-      // preparing for a future function that adds consumer neighborhoods for
-      // the double greedy algorithm
-      // TODO shardMap.addConsumer(consumer, producer, weight);
     }
   }
 }
 
 int main(int argc, char *argv[]) {
+  std::cout.imbue(std::locale("en_US.UTF-8")); // Use thousands separator
   bool useDouble = false;
   if (argc > 1) {
     if (strcmp(argv[1], "double") == 0) {
@@ -443,7 +386,7 @@ int main(int argc, char *argv[]) {
     }
   }
   auto start1 = std::chrono::high_resolution_clock::now();
-  setUpMap();
+  setUpMap(useDouble);
 
   auto start2 = std::chrono::high_resolution_clock::now();
 
@@ -514,8 +457,6 @@ int main(int argc, char *argv[]) {
 std::vector<Pair> greedy() {
   std::vector<Pair> matching;
 
-  // this approach is ugly but havent seen any good options
-  //  init and set all nodes as available
   std::unordered_set<u_int32_t> consumers;
   std::unordered_set<u_int32_t> producers;
 
@@ -549,28 +490,16 @@ std::vector<Pair> greedy() {
 
 Pairing doubleGreedy() {
   Pairing matching;
+  std::unordered_set<u_int32_t> consumers;
+  std::unordered_set<u_int32_t> producers;
 
-  // readShard(0);
-
-  // init and set all nodes as available
-  bool consumers[nrConsumers];
-  bool producers[nrProducers];
-  for (u_int32_t i = 0; i < nrConsumers; i++) {
-    consumers[i] = true;
-  }
-  for (u_int32_t i = 0; i < nrProducers; i++) {
-    producers[i] = true;
-  }
-
-  for (u_int32_t i = 0; i < nrProducers; i++) {
+  for (u_int32_t i = 1; i < nrProducers + 1; i++) {
     std::vector<Pair> path; // init path
 
     // find available node
-    if (!producers[i]) {
+    if (producers.find(i) != producers.end()) {
       continue;
     }
-
-    // path.push_back(i); // add to path
 
     // repeat for rest of path
     u_int32_t nextNode = i;
@@ -587,18 +516,17 @@ Pairing doubleGreedy() {
     // make sure it doesnt add nodes with 0
     while (true) {
       originNode = nextNode;
-      edge = nextEdge(originNode, path, typeNode, consumers, producers,
+      edge = nextEdge(originNode, typeNode, consumers, producers,
                       consumerInPath, producerInPath);
       typeNode = !typeNode;
-      nextNode = std::get<0>(edge);
+      nextNode = edge.first;
       if (typeNode) {
         consumerInPath.insert(nextNode);
       } else {
         producerInPath.insert(nextNode);
       }
 
-      u_int32_t weight = std::get<1>(edge);
-      // u_int32_t weight = 1; // tmp value change to real value later
+      u_int32_t weight = edge.second;
       Pair nextPair = std::make_tuple(originNode, nextNode, weight);
       if (nextNode == 0) {
         break;
@@ -618,58 +546,46 @@ Pairing doubleGreedy() {
   return matching;
 }
 
-Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
-              bool consumers[], bool producers[],
+Edge nextEdge(u_int32_t node, bool typeNode,
+              std::unordered_set<u_int32_t> consumers,
+              std::unordered_set<u_int32_t> producers,
               std::unordered_set<u_int32_t> consumerInPath,
               std::unordered_set<u_int32_t> producerInPath) {
-  std::vector<std::pair<u_int32_t, u_int32_t>> neighbors;
 
+  std::vector<Edge> neighbors;
   // cout << "Edging" << '\n';
   //  check whether the neighbors are available
+  //
+  //  This should prolly just be done in the same swoop as the below?
   if (typeNode) {
-    for (std::pair<u_int32_t, u_int32_t> neighbor :
-         producerNeighborhoods[node]) {
+    for (Edge neighbor : Manager::getProducerNeighborhood(node)) {
       if (consumerInPath.count(neighbor.first) > 0) {
         continue;
         // consumer already in path
       }
-      if (consumers[std::get<0>(neighbor)]) {
+      if (consumers.find(neighbor.first) != consumers.end()) {
         neighbors.push_back(neighbor);
       }
     }
   } else {
-    for (std::pair<u_int32_t, u_int32_t> neighbor :
-         consumerNeighborhoods[node]) {
+    for (Edge neighbor : Manager::getConsumerNeighborhood(node)) {
       if (producerInPath.count(neighbor.first) > 0) {
         continue;
-        // proucer already in path
+        // producer already in path
       }
-      if (producers[std::get<0>(neighbor)]) {
+      if (producers.find(neighbor.first) != producers.end()) {
         neighbors.push_back(neighbor);
       }
     }
   }
 
-  /*
-  for (std::pair<u_int32_t, u_int32_t> neighbor : neighborhoods[node]) {
-    if (typeNode) {
-      if (consumers[std::get<0>(neighbor)]) {
-        neighbors.push_back(neighbor);
-      }
-    } else {
-      if (producers[std::get<0>(neighbor)]) {
-        neighbors.push_back(neighbor);
-      }
-    }
-  }
-  */
   // cout << "Grabbed neighbors" << '\n';
 
   u_int32_t highestIndex = 0;
   u_int32_t highestWeight = 0;
-  for (std::pair<u_int32_t, u_int32_t> neighbor : neighbors) {
-    highestIndex = std::max(std::get<0>(neighbor), highestIndex);
-    highestWeight = std::max(std::get<1>(neighbor), highestWeight);
+  for (Edge neighbor : neighbors) {
+    highestIndex = std::max(neighbor.first, highestIndex);
+    highestWeight = std::max(neighbor.second, highestWeight);
   }
 
   // cout << "Finding best" << '\n';
@@ -677,11 +593,11 @@ Edge nextEdge(u_int32_t node, std::vector<Pair> path, bool typeNode,
   // sketchy might work or might not work as intended
   if (highestIndex != 0) {
     if (typeNode) {
-      producers[node] = false;
-      consumers[highestIndex] = false;
+      producers.insert(node);
+      consumers.insert(highestIndex);
     } else {
-      consumers[node] = false;
-      producers[highestIndex] = false;
+      consumers.insert(node);
+      producers.insert(highestIndex);
     }
   }
 
