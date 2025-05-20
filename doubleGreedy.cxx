@@ -1,4 +1,3 @@
-#include <array>
 #include <cassert>
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/map.hpp>
@@ -8,8 +7,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <sys/types.h>
@@ -99,7 +100,7 @@ public:
   static void addProducer(u_int32_t producer, u_int32_t consumer,
                           u_int32_t weight) {
 
-    u_int32_t shardOfProducer = producer % ShardMapNew::shardCount;
+    u_int32_t shardOfProducer = producer / ShardMapNew::shardCount;
     // std::cout << "shard: " << shardOfProducer << '\n';
 
     // if the shard is already in the set this returns false
@@ -184,7 +185,7 @@ public:
 
   static std::vector<Edge> getProducerNeighborhood(u_int32_t producer) {
     // std::cout << producer << '\n';
-    u_int32_t producersShard = producer % ShardMapNew::shardCount;
+    u_int32_t producersShard = producer / ShardMapNew::shardCount;
     ShardMapNew::loadShard(producersShard);
 
     // grab the specific hood
@@ -206,8 +207,34 @@ public:
   }
 };
 
-void setUpMap(u_int32_t chunks) {
+static int remove_old_shards() {
+  namespace fs = std::filesystem;
+  fs::create_directory("shards");
+  std::string directory =
+      "./shards/"; // Change to your target directory if needed
+  std::regex pattern("^shard.*\\.bin$");
 
+  try {
+    for (const auto &entry : fs::directory_iterator(directory)) {
+      if (fs::is_regular_file(entry.status())) {
+        std::string filename = entry.path().filename().string();
+        if (std::regex_match(filename, pattern)) {
+          std::cout << "Removing: " << entry.path() << '\n';
+          fs::remove(entry.path());
+        }
+      }
+    }
+  } catch (const fs::filesystem_error &e) {
+    std::cerr << "Filesystem error: " << e.what() << '\n';
+  } catch (const std::regex_error &e) {
+    std::cerr << "Regex error: " << e.what() << '\n';
+  }
+
+  return 0;
+}
+
+void setUpMap(u_int32_t chunks) {
+  remove_old_shards();
   // standard first shard naming maybe change this later?
   std::string filename = "graph0.txt";
   std::ifstream graphFile(filename);
@@ -288,8 +315,9 @@ int main(int argc, char *argv[]) {
       useDouble = true;
     }
   }
-  ShardMapNew::shardCount = 5;
-  setUpMap(1);
+
+  ShardMapNew::shardCount = 500000;
+  setUpMap(3897);
   // auto tmp = ShardMapNew::getProducerNeighborhood(10);
   // std::cout << tmp[0].first << ' ' << tmp[0].second << '\n';
   // return 0;
