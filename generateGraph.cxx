@@ -15,16 +15,20 @@
 #include <unordered_map>
 #include <utility>
 
-#define PROSUMERS 100000
-#define CONSUMERS PROSUMERS * 5
-#define SIZE PROSUMERS + (CONSUMERS)
-#define EDGES_PER_CHUNK 100000 // 10 000 000 is around 165MB
+// #define PROSUMERS 500000000
+// #define CONSUMERS PROSUMERS * 5
+// #define SIZE PROSUMERS + (CONSUMERS)
+constexpr size_t PROSUMERS = 50'000'000;
+constexpr size_t CONSUMERS = PROSUMERS * 5;
+constexpr size_t SIZE = PROSUMERS + CONSUMERS;
+
+#define EDGES_PER_CHUNK 1000000 // 10 000 000 is around 165MB
 #define SPARSEFACTOR                                                           \
   (3 * log(SIZE) / (SIZE)) // percent chance to not create make_edge
 #define SEED 1234          // Current seed for the string
 #define GAMMA                                                                  \
   2 // GAMMA value, determines the scaling of weights for a nodes edges
-#define BETA 50000
+#define BETA 4
 #define MAXWEIGHT 100 // Max allowed weight
 
 using namespace std;
@@ -127,33 +131,33 @@ int main() {
   std::uniform_int_distribution<> consumer_dist(0, (CONSUMERS)-1);
 
   unordered_map<std::pair<int, int>, Weight, pair_hash> graph;
-  unordered_map<int32_t, Weight> consumer_weights;
-  for (int32_t i = 0; i < CONSUMERS; i++) {
-    consumer_weights[i] = MAXWEIGHT;
-  }
+  // unordered_map<int32_t, Weight> consumer_weights;
+  // for (u_int32_t i = 0; i < CONSUMERS; i++) {
+  //   consumer_weights[i] = MAXWEIGHT;
+  // }
+  std::vector<Weight> consumer_weights(CONSUMERS, MAXWEIGHT);
+
   int chunk = 0;
   uint32_t num_of_edges = 0;
-
   for (int i = 0; i < PROSUMERS; i++) {
 
     int degree = degree_dist(gen3);
     int producer_current_edges = 0;
 
-    uint32_t weight_limit = MAXWEIGHT;
-
+    Weight weight_limit = MAXWEIGHT;
     while (producer_current_edges < degree) {
 
       int consumer = consumer_dist(gen3);
       if (graph.find({i, consumer}) != graph.end()) {
         continue;
       }
-      uint32_t consumer_weight_limit = MAXWEIGHT;
+      Weight consumer_weight_limit = MAXWEIGHT;
 
       consumer_weight_limit = consumer_weights[consumer] * BETA;
       weight_distrib.param(poisson_distribution<uint32_t>::param_type(
           (min(weight_limit, consumer_weight_limit)) / 2));
 
-      uint32_t new_weight = weight_distrib(gen);
+      Weight new_weight = weight_distrib(gen);
       while (new_weight > weight_limit || new_weight > consumer_weight_limit ||
              new_weight == 0) {
         new_weight = weight_distrib(gen);
