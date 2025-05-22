@@ -18,11 +18,11 @@
 // #define PROSUMERS 500000000
 // #define CONSUMERS PROSUMERS * 5
 // #define SIZE PROSUMERS + (CONSUMERS)
-constexpr size_t PROSUMERS = 50'000'000;
+constexpr size_t PROSUMERS = 1'000'000;
 constexpr size_t CONSUMERS = PROSUMERS * 5;
 constexpr size_t SIZE = PROSUMERS + CONSUMERS;
 
-#define EDGES_PER_CHUNK 1000000 // 10 000 000 is around 165MB
+#define EDGES_PER_CHUNK 1000000000 // 10 000 000 is around 165MB
 #define SPARSEFACTOR                                                           \
   (3 * log(SIZE) / (SIZE)) // percent chance to not create make_edge
 #define SEED 1234          // Current seed for the string
@@ -127,7 +127,12 @@ int main() {
   gen3.seed(SEED);
   std::uniform_real_distribution<> uniform_distrib(0, 1);
   std::poisson_distribution<uint32_t> weight_distrib((MAXWEIGHT) / 2);
+  // below is for binomial dist
   std::binomial_distribution<> degree_dist(CONSUMERS, SPARSEFACTOR);
+  // below 2 rows are for exponential distribution of edges
+  // double expected_degree = SPARSEFACTOR * CONSUMERS; // USED FOR EXPONENTIAL
+  // std::exponential_distribution<> degree_dist(1.0 / expected_degree); // USED
+  // FOR EXPONENTIAL
   std::uniform_int_distribution<> consumer_dist(0, (CONSUMERS)-1);
 
   unordered_map<std::pair<int, int>, Weight, pair_hash> graph;
@@ -141,7 +146,9 @@ int main() {
   uint32_t num_of_edges = 0;
   for (int i = 0; i < PROSUMERS; i++) {
 
-    int degree = degree_dist(gen3);
+    // int degree = degree_dist(gen3);
+
+    int degree = std::max(1, std::min((int)degree_dist(gen3), (int)CONSUMERS));
     int producer_current_edges = 0;
 
     Weight weight_limit = MAXWEIGHT;
