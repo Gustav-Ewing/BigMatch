@@ -12,7 +12,6 @@
 #include <iostream>
 #include <limits>
 #include <list>
-#include <regex>
 #include <sstream>
 #include <string>
 #include <sys/types.h>
@@ -39,10 +38,10 @@ std::vector<Pair> greedy();
 Pairing doubleGreedy();
 
 Edge nextEdge(u_int32_t node, bool typeNode,
-              std::unordered_set<u_int32_t> consumers,
-              std::unordered_set<u_int32_t> producers,
-              std::unordered_set<u_int32_t> consumerInPath,
-              std::unordered_set<u_int32_t> producerInPath);
+              const std::unordered_set<u_int32_t> &consumers,
+              const std::unordered_set<u_int32_t> &producers);
+// const std::unordered_set<u_int32_t> &consumersPath,
+// const std::unordered_set<u_int32_t> &producersPath);
 
 // std::pair<u_int32_t, u_int32_t> nextEdge(u_int32_t node, std::vector<Pair>
 // path,
@@ -271,15 +270,15 @@ private:
   static inline std::list<u_int32_t> lruProducer;
   static inline std::unordered_set<u_int32_t> existingShardsConsumer;
   static inline std::unordered_set<u_int32_t> existingShardsProducer;
-  static inline size_t max_cache_size = 10;  // this value is in shards
-  static inline u_int32_t shardSize = 10000; // while this value is in producers
+  static inline size_t max_cache_size = 10000; // this value is in shards
+  static inline u_int32_t shardSize = 4000; // while this value is in producers
 
   Manager() = default;
   Manager(const Manager &) = delete;
   Manager &operator=(const Manager &) = delete;
 };
 
-static int remove_old_shards() {
+static void remove_old_shards() {
   namespace fs = std::filesystem;
   std::string directory = "./shards/";
 
@@ -291,7 +290,6 @@ static int remove_old_shards() {
     fs::remove(entry);
   }
   std::cout << "removed old shards" << '\n';
-  return 0;
 }
 
 void setUpMap(bool useDouble) {
@@ -408,30 +406,26 @@ int main(int argc, char *argv[]) {
   result.push_back(test);
   */
 
+  std::pmr::unordered_set<u_int32_t> seenNodes;
   if (!useDouble) {
 
     u_int64_t summer = 0;
-    int counter = 0;
     for (Pair element : resultNormal) {
-      if (false) {
-        std::cout << "\t" << "Pair " << counter++ << " :" << "\n";
-        std::cout << "\t\t" << "First Node: " << "\t" << std::get<0>(element)
-                  << "\n";
-        std::cout << "\t\t" << "Second Node: " << "\t" << std::get<1>(element)
-                  << "\n";
-        std::cout << "\t\t" << "Weight: " << "\t" << std::get<2>(element)
-                  << "\n";
-      }
+      seenNodes.insert(std::get<0>(element));
       summer += std::get<2>(element); // the weight to running total of weights
     }
     std::cout << '\n' << "The number pairs is: " << resultNormal.size();
     std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
   } else {
     u_int64_t summer = 0;
-    for (u_int32_t i = 1; i < result.size(); i++) {
-      std::cout << "Path " << i << " :" << "\n";
+    int counterTotal = 0;
+    for (u_int32_t i = 0; i < result.size(); i++) {
+      // std::cout << "Path " << i + 1 << " :" << "\n";
       int counter = 0;
       for (Pair element : result[i]) {
+        seenNodes.insert(std::get<0>(element));
+        counter++;
+        /*
         std::cout << "\t" << "Pair " << counter++ << " :" << "\n";
         std::cout << "\t\t" << "First Node: " << "\t" << std::get<0>(element)
                   << "\n";
@@ -439,10 +433,13 @@ int main(int argc, char *argv[]) {
                   << "\n";
         std::cout << "\t\t" << "Weight: " << "\t" << std::get<2>(element)
                   << "\n";
+        */
         summer +=
             std::get<2>(element); // the weight to running total of weights
       }
+      counterTotal += counter;
     }
+    std::cout << '\n' << "The number pairs is: " << counterTotal;
     std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
   }
   const std::chrono::duration<double> elapsed_seconds1{start2 - start1};
@@ -451,6 +448,11 @@ int main(int argc, char *argv[]) {
             << " seconds" << '\n';
   std::cout << "\nExecution time matching: " << elapsed_seconds2.count()
             << " seconds" << '\n';
+  for (u_int32_t i = 1; i < nrProducers + 1; i++) {
+    if (seenNodes.find(i) == seenNodes.end()) {
+      std::cout << i << " was not paired" << '\n';
+    }
+  }
   return 0;
 }
 
@@ -490,118 +492,137 @@ std::vector<Pair> greedy() {
 
 Pairing doubleGreedy() {
   Pairing matching;
+
+  // These sets keep track of the global availability of nodes
   std::unordered_set<u_int32_t> consumers;
   std::unordered_set<u_int32_t> producers;
 
-  for (u_int32_t i = 1; i < nrProducers + 1; i++) {
-    std::vector<Pair> path; // init path
+  std::vector<Pair> path;
 
+  for (u_int32_t i = 1; i < nrProducers + 1; i++) {
+    path.clear(); // init path
+    std::cout << "Matching producer number: " << i << "\t\r" << std::flush;
     // find available node
     if (producers.find(i) != producers.end()) {
       continue;
     }
 
-    // repeat for rest of path
+    // setup
+    // set the next node to explore to the start and mark it as taken
     u_int32_t nextNode = i;
     u_int32_t originNode;
-    std::pair<u_int32_t, u_int32_t> edge;
+    Edge edge;
     bool typeNode = true;
 
-    std::unordered_set<u_int32_t> producerInPath;
-    std::unordered_set<u_int32_t> consumerInPath;
+    // Using only the global sets for now but these could be needed for some
+    // edge cases
+    // These sets keep track of what nodes are apart of the path
+    // std::unordered_set<u_int32_t> consumersPath;
+    // std::unordered_set<u_int32_t> producersPath;
 
-    // fix this != 0 condition so it ends the loop properly (make sure no
-    // weight is ever 0 except when there is none) should be fine now but need
-    // to double check this also moved the check further down in the loop to
-    // make sure it doesnt add nodes with 0
+    // add the origin producer to the path
+    // producersPath.insert(i);
+    producers.insert(i);
+
+    // repeat for rest of path
+    // this while ends when a node 0 is found
+    // which means the neighborhood had no available nodes
     while (true) {
       originNode = nextNode;
-      edge = nextEdge(originNode, typeNode, consumers, producers,
-                      consumerInPath, producerInPath);
-      typeNode = !typeNode;
-      nextNode = edge.first;
-      if (typeNode) {
-        consumerInPath.insert(nextNode);
-      } else {
-        producerInPath.insert(nextNode);
-      }
+      // edge = nextEdge(originNode, typeNode, consumers, producers,
+      // consumersPath, producersPath);
 
-      u_int32_t weight = edge.second;
-      Pair nextPair = std::make_tuple(originNode, nextNode, weight);
+      edge = nextEdge(originNode, typeNode, consumers, producers);
+      nextNode = edge.first;
+
       if (nextNode == 0) {
         break;
       }
-      // add only the edges that were found from a producer
-      // this is not strictly correct but works for now
-      // it will be slightly lower than what it should be for double
-      // extra sketchy because typenode has now been fliped for the next
-      // iteration so -> !typenode
-      if (!typeNode) {
-        path.push_back(nextPair);
+
+      // Add the new node to the path
+      if (typeNode) {
+        // consumersPath.insert(nextNode);
+        consumers.insert(nextNode);
+      } else {
+        // producersPath.insert(nextNode);
+        producers.insert(nextNode);
       }
+
+      // Pair nextPair = std::make_tuple(originNode, nextNode, edge.second);
+
+      //  add only the edges that were found from a producer
+      //  this is not strictly correct but works for now
+      //  it will be slightly lower than what it should be for double
+      if (typeNode) {
+        path.emplace_back(originNode, nextNode, edge.second);
+        // switched to the inplace construction above
+        // path.push_back(nextPair);
+      }
+      // Finally flip typenode since
+      // Producer -> Consumer
+      // Consumer -> Producer
+      typeNode = !typeNode;
     }
+    // add the path to the collection of paths
     matching.push_back(path);
+    // Also make the nodes in the path unavailable
+    // while taking care to not include a straggler
+
+    // assuming all pairs originate in producers for now
+    for (Pair pair : path) {
+      producers.insert(std::get<0>(pair));
+      consumers.insert(std::get<1>(pair));
+    }
   }
 
   return matching;
 }
 
 Edge nextEdge(u_int32_t node, bool typeNode,
-              std::unordered_set<u_int32_t> consumers,
-              std::unordered_set<u_int32_t> producers,
-              std::unordered_set<u_int32_t> consumerInPath,
-              std::unordered_set<u_int32_t> producerInPath) {
+              const std::unordered_set<u_int32_t> &consumers,
+              const std::unordered_set<u_int32_t> &producers) {
+  // const std::unordered_set<u_int32_t> &consumersPath,
+  // const std::unordered_set<u_int32_t> &producersPath) {
 
   std::vector<Edge> neighbors;
-  // cout << "Edging" << '\n';
-  //  check whether the neighbors are available
-  //
-  //  This should prolly just be done in the same swoop as the below?
+
   if (typeNode) {
     for (Edge neighbor : Manager::getProducerNeighborhood(node)) {
-      if (consumerInPath.count(neighbor.first) > 0) {
-        continue;
-        // consumer already in path
-      }
-      if (consumers.find(neighbor.first) != consumers.end()) {
+
+      // See doubleGreedy for why this is commented
+      // If it is already in the path ignore it
+      // if (consumersPath.find(neighbor.first) != consumersPath.end()) {
+      // continue;
+      // }
+
+      // Add the consumer to the path if it is available
+      if (consumers.find(neighbor.first) == consumers.end()) {
         neighbors.push_back(neighbor);
       }
     }
   } else {
     for (Edge neighbor : Manager::getConsumerNeighborhood(node)) {
-      if (producerInPath.count(neighbor.first) > 0) {
-        continue;
-        // producer already in path
-      }
-      if (producers.find(neighbor.first) != producers.end()) {
+      // if (producersPath.find(neighbor.first) != producersPath.end()) {
+      // continue;
+      // }
+
+      if (producers.find(neighbor.first) == producers.end()) {
         neighbors.push_back(neighbor);
       }
     }
   }
 
-  // cout << "Grabbed neighbors" << '\n';
-
+  // Find the best neighbor in the neighborhood
+  // Might be worth it to move this part into the if statements
+  // It avoids the neighbors vector but puts more code in the if statements
   u_int32_t highestIndex = 0;
   u_int32_t highestWeight = 0;
   for (Edge neighbor : neighbors) {
-    highestIndex = std::max(neighbor.first, highestIndex);
-    highestWeight = std::max(neighbor.second, highestWeight);
-  }
-
-  // cout << "Finding best" << '\n';
-
-  // sketchy might work or might not work as intended
-  if (highestIndex != 0) {
-    if (typeNode) {
-      producers.insert(node);
-      consumers.insert(highestIndex);
-    } else {
-      consumers.insert(node);
-      producers.insert(highestIndex);
+    if (neighbor.second > highestWeight) {
+      highestWeight = neighbor.second;
+      highestIndex = neighbor.first;
     }
   }
-
-  // cout << "Updating availability" << '\n';
 
   return std::make_pair(highestIndex, highestWeight);
 }
