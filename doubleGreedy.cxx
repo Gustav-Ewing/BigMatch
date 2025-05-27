@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cctype>
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/map.hpp>
 #include <cereal/types/tuple.hpp>
@@ -66,7 +67,7 @@ class Manager {
 public:
   static std::vector<Edge> getProducerNeighborhood(u_int32_t producer) {
     // std::cout << producer << '\n';
-    u_int32_t producersShardNr = producer / shardSize;
+    u_int32_t producersShardNr = producer / shardSizeProducer;
 
     Shard &producerShard = getProducerShard(producersShardNr);
 
@@ -90,7 +91,7 @@ public:
   }
 
   static std::vector<Edge> getConsumerNeighborhood(u_int32_t consumer) {
-    u_int32_t consumersShardNr = consumer / shardSize;
+    u_int32_t consumersShardNr = consumer / shardSizeConsumer;
 
     Shard &consumerShard = getConsumerShard(consumersShardNr);
 
@@ -116,7 +117,7 @@ public:
   // adds the specified edge to the producers neighborhood
   static void addProducer(u_int32_t producer, u_int32_t consumer,
                           u_int32_t weight) {
-    u_int32_t producersShardNr = producer / shardSize;
+    u_int32_t producersShardNr = producer / shardSizeProducer;
     Shard &producerShard = getProducerShard(producersShardNr);
 
     producerShard.hoods[producer].emplace_back(consumer, weight);
@@ -125,14 +126,21 @@ public:
   // adds the specified edge to the consumers neighborhood
   static void addConsumer(u_int32_t consumer, u_int32_t producer,
                           u_int32_t weight) {
-    u_int32_t consumersShardNr = consumer / shardSize;
+    u_int32_t consumersShardNr = consumer / shardSizeConsumer;
     Shard &consumerShard = getConsumerShard(consumersShardNr);
 
     // std::cout << "Before: " << producerShard.hoods.size() << '\n';
     consumerShard.hoods[consumer].emplace_back(producer, weight);
     // std::cout << "After: " << producerShard.hoods.size() << '\n';
   }
-
+  static inline u_int32_t maxCacheSizeProducer =
+      8000; // this value is in shards
+  static inline u_int32_t shardSizeProducer =
+      8000; // while this value is in producers
+  static inline u_int32_t maxCacheSizeConsumer =
+      8000; // this value is in shards
+  static inline u_int32_t shardSizeConsumer =
+      8000; // while this value is in consumers
 private:
   using ListIt = std::list<u_int32_t>::iterator;
 
@@ -154,7 +162,7 @@ private:
     }
 
     // Cache miss so load and evict if needed
-    if (cacheProducer.size() >= max_cache_size) {
+    if (cacheProducer.size() >= maxCacheSizeProducer) {
       evictLRUProducer();
     }
     Shard shard;
@@ -187,7 +195,7 @@ private:
     }
 
     // Cache miss so load and evict if needed
-    if (cacheConsumer.size() >= max_cache_size) {
+    if (cacheConsumer.size() >= maxCacheSizeConsumer) {
       evictLRUConsumer();
     }
     Shard shard;
@@ -270,8 +278,6 @@ private:
   static inline std::list<u_int32_t> lruProducer;
   static inline std::unordered_set<u_int32_t> existingShardsConsumer;
   static inline std::unordered_set<u_int32_t> existingShardsProducer;
-  static inline size_t max_cache_size = 10000; // this value is in shards
-  static inline u_int32_t shardSize = 4000; // while this value is in producers
 
   Manager() = default;
   Manager(const Manager &) = delete;
@@ -295,7 +301,7 @@ static void remove_old_shards() {
 void setUpMap(bool useDouble) {
   remove_old_shards();
   // standard first shard naming maybe change this later?
-  std::string filename = "graph0.txt";
+  std::string filename = "graphs/graph0.txt";
   std::ifstream graphFile(filename);
   std::string inputstr;
 
@@ -326,7 +332,7 @@ void setUpMap(bool useDouble) {
 
   // In a way this is just a while loop maybe I should make it one
   for (u_int32_t i = 0; i < std::numeric_limits<u_int32_t>::max(); i++) {
-    std::string filename = "graph" + std::to_string(i) + ".txt";
+    std::string filename = "graphs/graph" + std::to_string(i) + ".txt";
     std::ifstream graphFile(filename);
     std::string inputstr;
 
@@ -377,12 +383,40 @@ void setUpMap(bool useDouble) {
 
 int main(int argc, char *argv[]) {
   std::cout.imbue(std::locale("en_US.UTF-8")); // Use thousands separator
-  bool useDouble = false;
+  bool useDouble = true;
+
+  // Clang tidy hates this block it seems
+  // All it does is select which algorithm to use based on user input
+  // and then select paramaters based on user input as well
   if (argc > 1) {
-    if (strcmp(argv[1], "double") == 0) {
-      useDouble = true;
+    // Kinda unnecesary check but this avoid crashes on inputs like "norma"
+    // If you mix numbers and letters that's your issue for now
+    if (std::isalpha(argv[1][0])) {
+      if (strcmp(argv[1], "normal") == 0) {
+        useDouble = false;
+        if (argc > 2) {
+          Manager::maxCacheSizeProducer = u_int32_t(std::stoul(argv[2]));
+        }
+        if (argc > 3) {
+          Manager::shardSizeProducer = u_int32_t(std::stoul(argv[3]));
+        }
+      }
+    } else {
+      if (argc > 1) {
+        Manager::maxCacheSizeProducer = u_int32_t(std::stoul(argv[1]));
+      }
+      if (argc > 2) {
+        Manager::shardSizeProducer = u_int32_t(std::stoul(argv[2]));
+      }
+      if (argc > 3) {
+        Manager::maxCacheSizeConsumer = u_int32_t(std::stoul(argv[3]));
+      }
+      if (argc > 4) {
+        Manager::shardSizeConsumer = u_int32_t(std::stoul(argv[4]));
+      }
     }
   }
+
   auto start1 = std::chrono::high_resolution_clock::now();
   setUpMap(useDouble);
 
@@ -444,9 +478,12 @@ int main(int argc, char *argv[]) {
   }
   const std::chrono::duration<double> elapsed_seconds1{start2 - start1};
   const std::chrono::duration<double> elapsed_seconds2{stop - start2};
+  const std::chrono::duration<double> elapsed_seconds3{stop - start1};
   std::cout << "\nExecution time setup: " << elapsed_seconds1.count()
             << " seconds" << '\n';
   std::cout << "\nExecution time matching: " << elapsed_seconds2.count()
+            << " seconds" << '\n';
+  std::cout << "\nExecution time total: " << elapsed_seconds3.count()
             << " seconds" << '\n';
   for (u_int32_t i = 1; i < nrProducers + 1; i++) {
     if (seenNodes.find(i) == seenNodes.end()) {
