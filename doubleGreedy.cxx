@@ -26,6 +26,7 @@ u_int32_t graphSize = 0;
 u_int32_t nrProducers = 0;
 u_int32_t nrConsumers = 0;
 u_int32_t entries = 0;
+u_int32_t lValue = 32; // Standard value for l
 
 using Weight = uint32_t;
 using Pair = std::tuple<uint32_t, uint32_t, uint32_t>;
@@ -300,6 +301,7 @@ static void remove_old_shards() {
 
 void setUpMap(bool useDouble) {
   remove_old_shards();
+
   // standard first shard naming maybe change this later?
   std::string filename = "graphs/graph0.txt";
   std::ifstream graphFile(filename);
@@ -328,6 +330,8 @@ void setUpMap(bool useDouble) {
   entries = u_int32_t(std::stoul(e));
   graphSize = nrProducers + nrConsumers; // is this still used though?
 
+  std::vector<u_int32_t> seenProducers(nrProducers + 1, 0);
+  std::vector<u_int32_t> seenConsumers(nrConsumers + 1, 0);
   std::cout << "metadata setup done" << '\n';
 
   // In a way this is just a while loop maybe I should make it one
@@ -370,9 +374,13 @@ void setUpMap(bool useDouble) {
 
       // std::cout << producer << ' ' << consumer << ' ' << edgeWeight <<
       // '\n'; ShardMapNew::addProducer(producer, consumer, edgeWeight);
-      Manager::addProducer(producer, consumer, edgeWeight);
-      if (useDouble) {
+      if (seenProducers[producer] < lValue) {
+        Manager::addProducer(producer, consumer, edgeWeight);
+        seenProducers[producer]++;
+      }
+      if (useDouble && seenConsumers[consumer] < lValue) {
         Manager::addConsumer(consumer, producer, edgeWeight);
+        seenConsumers[consumer]++;
       }
       // std::cout << ShardMapNew::getProducerNeighborhood(producer).size()
       // << '\n';
@@ -400,6 +408,9 @@ int main(int argc, char *argv[]) {
         if (argc > 3) {
           Manager::shardSizeProducer = u_int32_t(std::stoul(argv[3]));
         }
+        if (argc > 4) {
+          lValue = u_int32_t(std::stoul(argv[4]));
+        }
       }
     } else {
       if (argc > 1) {
@@ -413,6 +424,9 @@ int main(int argc, char *argv[]) {
       }
       if (argc > 4) {
         Manager::shardSizeConsumer = u_int32_t(std::stoul(argv[4]));
+      }
+      if (argc > 5) {
+        lValue = u_int32_t(std::stoul(argv[5]));
       }
     }
   }
@@ -448,6 +462,11 @@ int main(int argc, char *argv[]) {
       seenNodes.insert(std::get<0>(element));
       summer += std::get<2>(element); // the weight to running total of weights
     }
+    for (u_int32_t i = 1; i < nrProducers + 1; i++) {
+      if (seenNodes.find(i) == seenNodes.end()) {
+        std::cout << i << " was not paired" << '\n';
+      }
+    }
     std::cout << '\n' << "The number pairs is: " << resultNormal.size();
     std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
   } else {
@@ -473,6 +492,11 @@ int main(int argc, char *argv[]) {
       }
       counterTotal += counter;
     }
+    for (u_int32_t i = 1; i < nrProducers + 1; i++) {
+      if (seenNodes.find(i) == seenNodes.end()) {
+        std::cout << i << " was not paired" << '\n';
+      }
+    }
     std::cout << '\n' << "The number pairs is: " << counterTotal;
     std::cout << '\n' << "The total weight is: " << summer << '\n' << '\n';
   }
@@ -485,11 +509,6 @@ int main(int argc, char *argv[]) {
             << " seconds" << '\n';
   std::cout << "\nExecution time total: " << elapsed_seconds3.count()
             << " seconds" << '\n';
-  for (u_int32_t i = 1; i < nrProducers + 1; i++) {
-    if (seenNodes.find(i) == seenNodes.end()) {
-      std::cout << i << " was not paired" << '\n';
-    }
-  }
   return 0;
 }
 
