@@ -5,7 +5,6 @@
 #include <cereal/types/tuple.hpp>
 #include <cereal/types/utility.hpp>
 #include <cereal/types/vector.hpp>
-#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -13,6 +12,7 @@
 #include <iostream>
 #include <limits>
 #include <list>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <sys/types.h>
@@ -26,7 +26,7 @@ u_int32_t graphSize = 0;
 u_int32_t nrProducers = 0;
 u_int32_t nrConsumers = 0;
 u_int32_t entries = 0;
-u_int32_t lValue = 32; // Standard value for l
+u_int32_t lValue = UINT32_MAX; // Standard value for list
 
 using Weight = uint32_t;
 using Pair = std::tuple<uint32_t, uint32_t, uint32_t>;
@@ -254,7 +254,7 @@ private:
 
   // loads the requested shard and returns it
   static Shard loadShard(u_int32_t shard, bool isProducer) {
-    std::cout << "Loading shard " << shard << '\n';
+    std::cout << "\033[40G" << "Loading shard " << shard << std::flush;
 
     // Determines if a producer or consumer shard is loaded
     std::string middle;
@@ -296,7 +296,7 @@ static void remove_old_shards() {
   for (const auto &entry : fs::directory_iterator(directory)) {
     fs::remove(entry);
   }
-  std::cout << "removed old shards" << '\n';
+  std::cout << "removed old shards" << '\n' << std::flush;
 }
 
 void setUpMap(bool useDouble) {
@@ -317,7 +317,7 @@ void setUpMap(bool useDouble) {
     return;
   }
 
-  std::cout << "metadata setup start" << '\n';
+  std::cout << "metadata setup start" << '\n' << std::flush;
   std::string p, c, e;
   getline(input, p, ' ');
   getline(input, c, ' ');
@@ -332,7 +332,7 @@ void setUpMap(bool useDouble) {
 
   std::vector<u_int32_t> seenProducers(nrProducers + 1, 0);
   std::vector<u_int32_t> seenConsumers(nrConsumers + 1, 0);
-  std::cout << "metadata setup done" << '\n';
+  std::cout << "metadata setup done" << '\n' << std::flush;
 
   // In a way this is just a while loop maybe I should make it one
   for (u_int32_t i = 0; i < std::numeric_limits<u_int32_t>::max(); i++) {
@@ -350,7 +350,8 @@ void setUpMap(bool useDouble) {
     if (i == 0) {
       getline(graphFile, inputstr);
     }
-    std::cout << "adding producers from chunk: " << i << '\n';
+    std::cout << "\033[1G" << "adding producers from chunk: " << i
+              << std::flush;
     while (getline(graphFile, inputstr)) {
       // std::cout << inputstr << '\n';
       std::istringstream input;
@@ -390,6 +391,9 @@ void setUpMap(bool useDouble) {
 }
 
 int main(int argc, char *argv[]) {
+
+  std::ios::sync_with_stdio(false); // Supposed cout improvement
+
   std::cout.imbue(std::locale("en_US.UTF-8")); // Use thousands separator
   bool useDouble = true;
 
@@ -436,7 +440,7 @@ int main(int argc, char *argv[]) {
 
   auto start2 = std::chrono::high_resolution_clock::now();
 
-  std::cout << "Matching" << '\n';
+  std::cout << "\nMatching" << '\n' << std::flush;
   Pairing result;
   std::vector<Pair> resultNormal;
 
@@ -446,7 +450,7 @@ int main(int argc, char *argv[]) {
     resultNormal = greedy();
   }
   auto stop = std::chrono::high_resolution_clock::now();
-  std::cout << "Finished Matching" << '\n';
+  std::cout << "\nFinished Matching" << '\n' << std::flush;
   /*
   //testcode for the print below
   Pair test = make_tuple(1, 2, 10);
@@ -557,7 +561,7 @@ Pairing doubleGreedy() {
 
   for (u_int32_t i = 1; i < nrProducers + 1; i++) {
     path.clear(); // init path
-    std::cout << "Matching producer number: " << i << "\t\r" << std::flush;
+    std::cout << "\033[1G" << "Matching producer number: " << i << std::flush;
     // find available node
     if (producers.find(i) != producers.end()) {
       continue;
