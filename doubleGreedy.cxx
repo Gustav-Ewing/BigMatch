@@ -233,9 +233,18 @@ private:
   // saves a producer shard to the disk and clears it from the map
   static void saveProducerShard(u_int32_t shardToSave) {
 
-    std::ofstream file("shards/producerShard" + std::to_string(shardToSave) +
-                           ".bin",
+    u_int32_t leastEight = shardToSave & 0xFF;
+    std::string directory = "shards/" + std::to_string(leastEight) + '/';
+
+    // make sure it exists first
+    std::filesystem::create_directories(directory);
+    std::ofstream file(directory + "producerShard" +
+                           std::to_string(shardToSave) + ".bin",
                        std::ios::binary);
+    if (!file) {
+      std::cerr << "Failed to open output file!\n";
+      return;
+    }
     cereal::BinaryOutputArchive archive(file);
     archive(cacheProducer[shardToSave].shard);
     cacheProducer.erase(shardToSave);
@@ -244,9 +253,18 @@ private:
   // saves a consumer shard to the disk and clears it from the map
   static void saveConsumerShard(u_int32_t shardToSave) {
 
-    std::ofstream file("shards/consumerShard" + std::to_string(shardToSave) +
-                           ".bin",
+    u_int32_t leastEight = shardToSave & 0xFF;
+    std::string directory = "shards/" + std::to_string(leastEight) + '/';
+
+    // make sure it exists first
+    std::filesystem::create_directories(directory);
+    std::ofstream file(directory + "consumerShard" +
+                           std::to_string(shardToSave) + ".bin",
                        std::ios::binary);
+    if (!file) {
+      std::cerr << "Failed to open output file!\n";
+      return;
+    }
     cereal::BinaryOutputArchive archive(file);
     archive(cacheConsumer[shardToSave].shard);
     cacheConsumer.erase(shardToSave);
@@ -263,8 +281,10 @@ private:
     } else {
       middle = "consumer";
     }
+    u_int32_t leastEight = shard & 0xFF;
+    std::string directory = "shards/" + std::to_string(leastEight) + '/';
 
-    std::ifstream file("shards/" + middle + "Shard" + std::to_string(shard) +
+    std::ifstream file(directory + middle + "Shard" + std::to_string(shard) +
                            ".bin",
                        std::ios::binary);
     cereal::BinaryInputArchive archive(file);
@@ -286,28 +306,31 @@ private:
 };
 
 static void remove_old_shards() {
+  std::cout << "removing old shards" << '\n' << std::flush;
   namespace fs = std::filesystem;
   std::string directory = "./shards/";
 
-  // Create the directory if it doesn't exist
+  // delete the old directory and recreate it
+  fs::remove_all(directory);
   fs::create_directory(directory);
 
-  // Iterate and remove all files in the directory
-  for (const auto &entry : fs::directory_iterator(directory)) {
-    fs::remove(entry);
-  }
   std::cout << "removed old shards" << '\n' << std::flush;
 }
 
 void setUpMap(bool useDouble) {
-  remove_old_shards();
-
   // standard first shard naming maybe change this later?
   std::string filename = "graphs/graph0.txt";
   std::ifstream graphFile(filename);
   std::string inputstr;
 
-  getline(graphFile, inputstr);
+  while (true) {
+    getline(graphFile, inputstr);
+
+    // break if the line is not a comment
+    if (inputstr[0] != '%') {
+      break;
+    }
+  }
 
   std::istringstream input;
   input.str(inputstr);
@@ -330,8 +353,20 @@ void setUpMap(bool useDouble) {
   entries = u_int32_t(std::stoul(e));
   graphSize = nrProducers + nrConsumers; // is this still used though?
 
-  std::vector<u_int32_t> seenProducers(nrProducers + 1, 0);
-  std::vector<u_int32_t> seenConsumers(nrConsumers + 1, 0);
+  // special edge case
+  bool swappedProducersConsumers = false;
+  if (nrProducers > nrConsumers) {
+    // swap them to make the graph more reasonable
+    std::swap(nrConsumers, nrProducers);
+    swappedProducersConsumers = true;
+  }
+
+  // Because we increment every producer and consumer id by 1 to deal with zero
+  // indexed files we now also need to make these vectors 1 larger than they
+  // should be for those cases when we run into a one indexed file...
+  std::vector<u_int32_t> seenProducers(nrProducers + 2, 0);
+  std::vector<u_int32_t> seenConsumers(nrConsumers + 2, 0);
+
   std::cout << "metadata setup done" << '\n' << std::flush;
 
   // In a way this is just a while loop maybe I should make it one
@@ -348,7 +383,14 @@ void setUpMap(bool useDouble) {
     // metadata only gets added to file 0 for now?
     // maybe we should concilidate into a metadata only file then?
     if (i == 0) {
-      getline(graphFile, inputstr);
+      while (true) {
+        getline(graphFile, inputstr);
+
+        // break if the line is not a comment
+        if (inputstr[0] != '%') {
+          break;
+        }
+      }
     }
     std::cout << "\033[1G" << "adding producers from chunk: " << i
               << std::flush;
@@ -365,7 +407,7 @@ void setUpMap(bool useDouble) {
       getline(input, node2, ' ');
       getline(input, weight, ' ');
 
-      // trying a adjacency list approach
+      // an adjacency list style approach
       // first check if an entry already exists
       // if it does extract it and this node to that neighborhood and read it
 
@@ -373,19 +415,28 @@ void setUpMap(bool useDouble) {
       u_int32_t consumer = 1 + u_int32_t(stoul(node2));
       u_int32_t edgeWeight = u_int32_t(stoul(weight));
 
-      // std::cout << producer << ' ' << consumer << ' ' << edgeWeight <<
-      // '\n'; ShardMapNew::addProducer(producer, consumer, edgeWeight);
-      if (seenProducers[producer] < lValue) {
-        Manager::addProducer(producer, consumer, edgeWeight);
-        seenProducers[producer]++;
+      if (swappedProducersConsumers) {
+
+        // In this case we swap the consumers and producers
+        // since that makes more sense in this case
+        if (seenProducers[consumer] < lValue) {
+          Manager::addProducer(consumer, producer, edgeWeight);
+          seenProducers[consumer]++;
+        }
+        if (useDouble && seenConsumers[producer] < lValue) {
+          Manager::addConsumer(producer, consumer, edgeWeight);
+          seenConsumers[producer]++;
+        }
+      } else {
+        if (seenProducers[producer] < lValue) {
+          Manager::addProducer(producer, consumer, edgeWeight);
+          seenProducers[producer]++;
+        }
+        if (useDouble && seenConsumers[consumer] < lValue) {
+          Manager::addConsumer(consumer, producer, edgeWeight);
+          seenConsumers[consumer]++;
+        }
       }
-      if (useDouble && seenConsumers[consumer] < lValue) {
-        Manager::addConsumer(consumer, producer, edgeWeight);
-        seenConsumers[consumer]++;
-      }
-      // std::cout << ShardMapNew::getProducerNeighborhood(producer).size()
-      // << '\n';
-      // std::cout << "added producers from shard: " << i << '\n';
     }
   }
 }
@@ -435,6 +486,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  remove_old_shards();
   auto start1 = std::chrono::high_resolution_clock::now();
   setUpMap(useDouble);
 
