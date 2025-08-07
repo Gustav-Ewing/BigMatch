@@ -537,7 +537,7 @@ int main(int argc, char *argv[]) {
   result.push_back(test);
   */
 
-  std::pmr::unordered_set<u_int32_t> seenNodes;
+  std::unordered_set<u_int32_t> seenNodes;
   if (!useDouble) {
 
     u_int64_t summer = 0;
