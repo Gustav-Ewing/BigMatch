@@ -441,51 +441,78 @@ void setUpMap(bool useDouble) {
   }
 }
 
+enum class CLIOptions {
+  lVal,
+  producerPerShard,
+  producerShardSize,
+  consumerPerShard,
+  consumerShardSize,
+  greedy,
+  doubleGreedy,
+  unknown
+};
+
+CLIOptions hashCLIOptions(std::string input) {
+  if (input == "-l")
+    return CLIOptions::lVal;
+  if (input == "-pps")
+    return CLIOptions::producerPerShard;
+  if (input == "-pss")
+    return CLIOptions::producerShardSize;
+  if (input == "-cps")
+    return CLIOptions::consumerPerShard;
+  if (input == "-css")
+    return CLIOptions::consumerShardSize;
+  if (input == "-greedy")
+    return CLIOptions::greedy;
+  if (input == "-double")
+    return CLIOptions::doubleGreedy;
+  return CLIOptions::unknown;
+}
+
 int main(int argc, char *argv[]) {
 
   std::ios::sync_with_stdio(false); // Supposed cout improvement
 
   std::cout.imbue(std::locale("en_US.UTF-8")); // Use thousands separator
-  bool useDouble = true;
 
-  // Clang tidy hates this block it seems
-  // All it does is select which algorithm to use based on user input
-  // and then select paramaters based on user input as well
-  if (argc > 1) {
-    // Kinda unnecesary check but this avoid crashes on inputs like "norma"
-    // If you mix numbers and letters that's your issue for now
-    if (std::isalpha(argv[1][0])) {
-      if (strcmp(argv[1], "normal") == 0) {
-        useDouble = false;
-        if (argc > 2) {
-          Manager::maxCacheSizeProducer = u_int32_t(std::stoul(argv[2]));
-        }
-        if (argc > 3) {
-          Manager::shardSizeProducer = u_int32_t(std::stoul(argv[3]));
-        }
-        if (argc > 4) {
-          lValue = u_int32_t(std::stoul(argv[4]));
-        }
-      }
-    } else {
-      if (argc > 1) {
-        Manager::maxCacheSizeProducer = u_int32_t(std::stoul(argv[1]));
-      }
-      if (argc > 2) {
-        Manager::shardSizeProducer = u_int32_t(std::stoul(argv[2]));
-      }
-      if (argc > 3) {
-        Manager::maxCacheSizeConsumer = u_int32_t(std::stoul(argv[3]));
-      }
-      if (argc > 4) {
-        Manager::shardSizeConsumer = u_int32_t(std::stoul(argv[4]));
-      }
-      if (argc > 5) {
-        lValue = u_int32_t(std::stoul(argv[5]));
-      }
+  bool useDouble = true;
+  for (int i = 1; i < argc; i++) {
+
+    switch (hashCLIOptions(argv[i])) {
+    case CLIOptions::lVal:
+      lValue = std::stoul(argv[i + 1]);
+      i++;
+      break;
+    case CLIOptions::producerPerShard:
+      Manager::maxCacheSizeProducer = std::stoul(argv[i + 1]);
+      i++;
+      break;
+    case CLIOptions::producerShardSize:
+      Manager::shardSizeProducer = std::stoul(argv[i + 1]);
+      i++;
+      break;
+    case CLIOptions::consumerPerShard:
+      Manager::maxCacheSizeConsumer = std::stoul(argv[i + 1]);
+      i++;
+      break;
+    case CLIOptions::consumerShardSize:
+      Manager::shardSizeConsumer = std::stoul(argv[i + 1]);
+      i++;
+      break;
+    case CLIOptions::greedy:
+      useDouble = false;
+      break;
+    case CLIOptions::doubleGreedy:
+      useDouble = true;
+      break;
+    case CLIOptions::unknown:
+      std::cout << "Argument: " << argv[i] << " is unknown.\n";
+      return 1;
+      // not sure if this should be a return or break
+      // return enforces only valid arguments so probably better
     }
   }
-
   remove_old_shards();
   auto start1 = std::chrono::high_resolution_clock::now();
   setUpMap(useDouble);
