@@ -4,22 +4,40 @@
 cmake commands to compile and then run tested on linux
 
 These commands setup up the build directory
-	mkdir build
+	
+  mkdir build
 	cd build
-	cmake ../				sets current directory as the output target and the parent directory as the source
+	cmake ../
+    ^sets current directory as the output target and the parent directory as the source
 
-Compiling and running it from the python folder with L = 10 if no number is specified it defaults to no L value
-	cmake --build build		compiles the project into the executable Matching which should platform specific e.g. Matching on linux and Matching.exe on windows
-	build/Matching 10		executing from the duvignau-adapt_code/python directory is advised since otherwise a lot of python code just breaks and it's a huge headache to fix it
+Compiling and running all executables
 
+  Compile the project
+    
+    cmake --build build
+  
+  compiles the project into the executables Generate, Greedy, and Double which should be platform specific e.g. Greedy on linux and Greedy.exe on windows.
+  The executable is put in the build folder if cmake is set up like above.
 
-running the code
-	to run standard 2221 dataset with normal greedy naive -> build/Matching 0 0
-	this causes it to default to that dataset (doesn't work for now though because it relied on old preprocess to load data)
+  Generate graphs
+    
+    build/Generate -p 10 -e 100
+  
+  This sets the producer count to 10 and the amount of edges per chunk to 100 and all other values to the defaults defined in generateGraphx.cxx
+  These are the possible flags: -p -> producer count, -c -> consumer count, --SIZE -> size of the graph ie p+c (this is an override for testing), -e -> edges per chunk, -s -> sparsefactor ie how sparse the graph is, -g -> the gamma value to use, -b -> the beta value to use, -w -> the max weight possible for an edge.
+  All flags are followed by the value that is to be set to like in the example above.
 
-	to run 100k with normal greedy naive -> build/Matching 0 0 "100k-8.bin"
-	to run 100k with double greedy naive -> build/Matching 1 0 "100k-8.bin"
-	however, the precompute files need to be managed first
-	specifally make sure the opts are in bin/opts and costs in bin/costs
-	then rename them to remove opt/costs i.e. "costs100k-8.bin" should be "100k-8.bin" while "opt100k.bin" should be "100k-8.bin"
-	Will try to unify the binary naming at a later stage but for now it is needed to jump through these hops to run them
+  Local Greedy algorithm
+    
+    build/Greedy or build/Greedy filepath
+    
+      where filepath is the pre 0 name of the file ie Extra/Reuters911/Reuters9110.txt becomes Extra/Reuters911/Retuers911. Probably will make this more intuitive down the line.
+      Also that Extra is a folder inside BigMatch in this case so this is a relative filepath in this case.
+  This is the single pass Greedy algorithm that reads the chunks extracts the neighborhoods and performs the matching in each neighborhood.
+
+  Local Double Greedy algorithm
+    
+    build/Double -l 8 -pps 100
+  
+  Just like Generate this has some more possible flags. In the example above the l-value is set to 8 and the producers per shard is set to 100. The possible flags are: -l -> lvalue sued for neighborhoods, -pps -> max number of producer neighborhoods per shard, -pss -> producer shard size ie how many producer shards can be in memory at any time (slight missnomer), -cps and -css -> same as pps and pss but for consumer shards, -double -> forces usage of the double greedy algorithm but this is already the default, -greedy -> switches to the previous Local Greedy Algorithm but with sharding (mostly just a verification tool for the sharding). These 2 last options do not take a value as they are simple switches.
+    
