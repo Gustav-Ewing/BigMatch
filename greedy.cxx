@@ -1,123 +1,199 @@
 #include <chrono>
-#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <ostream>
-#include <regex>
+#include <pthread.h>
 #include <sstream>
 #include <string>
 #include <sys/types.h>
 #include <tuple>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #define L_VALUE 10000
 
-using namespace std;
+// Is it even worth letting Prodcuer and Consumer be different types?
+// I just made Consumer into a Producer alias to avoid problems down the line.
 using Producer = u_int32_t;
-using Consumer = u_int32_t;
+using Consumer = Producer;
 using Weight = u_int32_t;
-using Chunk = std::unordered_map<Producer, unordered_map<Consumer, Weight>>;
+
+using Edge = std::tuple<Producer, Consumer, Weight>;
+using Match = Edge;
+using MatchVec = std::vector<Match>;
+using Neighborhood = std::vector<Edge>;
+using Availability = std::unordered_set<Producer>;
+
+bool swapProdCon;
+bool sequential = true;
+
 u_long nrProducers;
 u_long nrConsumers;
 u_long nrEdges;
 u_long graph_size;
-unordered_set<Consumer> matched_consumers;
-unordered_map<Producer, Weight> all_matches;
 
-Chunk read_chunk(u_int32_t chunk) {
-  Chunk neighborhoods;
-  string filename = "graphs/graph" + to_string(chunk) + ".txt";
+int readMetaData() {
 
-  ifstream chunk_stream(filename);
+  std::string filename = "graphs/graph0.txt";
+  std::ifstream chunk_stream(filename);
+  std::string line;
 
   if (!chunk_stream.is_open()) {
-    return neighborhoods;
+    std::cout << "error: couldn't read graph0.txt file";
+    return 1;
   }
-  string line;
-  // read metadata of first line of first chunk
-  if (chunk == 0) {
-    getline(chunk_stream, line, '\n');
-    std::istringstream input;
-    input.str(line);
 
-    std::string sRows, sColumns, sEdges;
-    getline(input, sRows, ' ');
-    getline(input, sColumns, ' ');
-    getline(input, sEdges, ' ');
+  getline(chunk_stream, line, '\n');
+  std::istringstream input;
+  input.str(line);
 
-    // could increment these by one inorder to not have to do weirdness in the
-    // loops later on
-    nrProducers = stoul(sRows);
-    nrConsumers = stoul(sColumns);
-    nrEdges = stoul(sEdges);
-    graph_size = nrProducers + nrConsumers;
+  std::string sRows, sColumns, sEdges;
+  getline(input, sRows, ' ');
+  getline(input, sColumns, ' ');
+  getline(input, sEdges, ' ');
 
-    std::cout << "read metadata" << '\n';
+  // could increment these by one inorder to not have to do weirdness in the
+  // loops later on
+  nrProducers = stoul(sRows);
+  nrConsumers = stoul(sColumns);
+  nrEdges = stoul(sEdges);
+  graph_size = nrProducers + nrConsumers;
+
+  getline(chunk_stream, line, '\n');
+  input.str(line);
+
+  std::string sProducer, sConsumer;
+  getline(input, sProducer, ' ');
+  getline(input, sConsumer, ' ');
+
+  // determine whether row 1 or 2 is the sorted row
+  auto firstProducer = static_cast<Producer>(stoul(sProducer));
+  auto firstConsumer = static_cast<Consumer>(stoul(sConsumer));
+  if (firstProducer > firstConsumer) {
+    swapProdCon = true;
   }
-  vector<u_int32_t> line_words;
-  string word;
-  while (getline(chunk_stream, line)) {
-    line_words.clear();
-    stringstream unsplit_line(line);
-    while (unsplit_line >> word) {
-      line_words.push_back(static_cast<u_int32_t>(stoul(word)));
-    }
-    neighborhoods[line_words[0]][line_words[1]] = line_words[2];
-  }
-  return neighborhoods;
+
+  std::cout << "read metadata" << '\n';
+  return 0;
 }
 
-void match_chunk(Chunk chunk) {
-  for (const auto &[producer, edges] : chunk) {
-    tuple<Consumer, Weight> best_match = {nrConsumers + 1, 0};
-    u_int32_t checked_edges = 0;
-    for (const auto &[consumer, weight] : edges) {
-      if (checked_edges > L_VALUE) {
-        break;
-      }
-      if (matched_consumers.find(consumer) != matched_consumers.end()) {
-        continue;
-      }
-      if (weight > get<1>(best_match)) {
-        best_match = {consumer, weight};
-      }
-      checked_edges++;
+Match matchNeighborhood(Neighborhood *neighborhood,
+                        Availability *availability) {
+  if (neighborhood->size() == 0) {
+    return std::make_tuple(0, 0, 0);
+  }
+
+  Weight currentWeight;
+  Consumer currentConsumer;
+  Producer producer = std::get<0>(neighborhood->front());
+  Consumer bestConsumer = 0;
+  Weight highestWeight = 0;
+
+  for (Edge edge : *neighborhood) {
+    currentConsumer = std::get<1>(edge);
+    currentWeight = std::get<2>(edge);
+
+    if (availability->find(currentConsumer) != availability->end()) {
     }
-    if (!(get<1>(best_match) == nrConsumers + 1)) {
-      all_matches[producer] = get<1>(best_match);
-      matched_consumers.insert(get<0>(best_match));
+    if (highestWeight < currentWeight) {
+      highestWeight = currentWeight;
+      bestConsumer = currentConsumer;
     }
   }
+
+  return std::make_tuple(producer, bestConsumer, highestWeight);
+}
+
+int readChunk(u_int32_t chunkToRead, Neighborhood *neighborhood,
+              MatchVec *matches, Availability *availability) {
+  std::string filename = "graphs/graph" + std::to_string(chunkToRead) + ".txt";
+  std::ifstream chunk_stream(filename);
+
+  if (!chunk_stream.is_open()) {
+    std::cout << "error: reading file graphs/graph" << chunkToRead << ".txt";
+    return 1;
+  }
+
+  std::string line;
+  Producer producer;
+  Consumer consumer;
+  Weight weight;
+  std::stringstream sLine("");
+  u_int32_t lastProducer = 0;
+
+  // discard metadata
+  if (chunkToRead == 0) {
+    getline(chunk_stream, line);
+  }
+
+  while (getline(chunk_stream, line)) {
+    sLine.str(line);
+    std::string sProducer, sConsumer, sWeight;
+
+    // extract each 'word'
+    getline(sLine, sProducer, ' ');
+    getline(sLine, sConsumer, ' ');
+    getline(sLine, sWeight, ' ');
+
+    producer = static_cast<u_int32_t>(stoul(sProducer));
+    consumer = static_cast<u_int32_t>(stoul(sConsumer));
+    weight = static_cast<u_int32_t>(stoul(sWeight));
+
+    // swaps the producer and consumer in case the consumers are sequential
+    // instead of the producers
+    if (swapProdCon) {
+      std::swap(producer, consumer);
+    }
+
+    if (lastProducer == producer) {
+      neighborhood->emplace_back(producer, consumer, weight);
+
+    } else if (lastProducer < producer) {
+      Match match = matchNeighborhood(neighborhood, availability);
+      // dont add zero weight edges
+      if (std::get<2>(match) != 0) {
+        matches->push_back(match);
+      }
+
+      neighborhood->clear();
+      lastProducer = producer;
+      neighborhood->emplace_back(producer, consumer, weight);
+
+    } else {
+      sequential = false;
+    }
+  }
+  return 0;
 }
 
 int main() {
-
   std::cout.imbue(std::locale("en_US.UTF-8")); // Use thousands separator
-  auto start = chrono::high_resolution_clock::now();
-  u_int32_t chunk_number = 0;
+  auto start = std::chrono::high_resolution_clock::now();
+  u_int32_t chunkNumber = 0;
+  Neighborhood neighborhood;
+  MatchVec matches;
+  Availability availability;
 
-  Chunk chunk_neighborhoods = read_chunk(chunk_number);
-  while (!chunk_neighborhoods.empty()) {
-    cout << "Matching chunk number: " << chunk_number << "\t\r" << flush;
-    match_chunk(chunk_neighborhoods);
-
-    chunk_number++;
-    chunk_neighborhoods.clear();
-    chunk_neighborhoods = read_chunk(chunk_number);
+  while (true) {
+    std::cout << "Reading chunk number: " << chunkNumber << "\t\r"
+              << std::flush;
+    if (readChunk(chunkNumber, &neighborhood, &matches, &availability) == 0) {
+      break;
+    }
+    chunkNumber++;
   }
   Weight max_weight = 0;
 
-  for (const auto &[producer, weight] : all_matches) {
+  for (const auto &[producer, consumer, weight] : matches) {
     max_weight += weight;
   }
-  cout << "\nsize of matches is: " << all_matches.size() << '\n';
+  std::cout << "\nsize of matches is: " << matches.size() << '\n';
 
-  cout << "Max weight is : " << max_weight << '\n';
-  auto stop = chrono::high_resolution_clock::now();
-  const chrono::duration<double> elapsed_seconds{stop - start};
-  cout << "\nExecution time: " << elapsed_seconds.count() << " seconds" << '\n';
+  std::cout << "Max weight is : " << max_weight << '\n';
+  auto stop = std::chrono::high_resolution_clock::now();
+  const std::chrono::duration<double> elapsed_seconds{stop - start};
+  std::cout << "\nExecution time: " << elapsed_seconds.count() << " seconds"
+            << '\n';
   return 0;
 }
