@@ -17,7 +17,7 @@
 // I just made Consumer into a Producer alias to avoid problems down the line.
 using Producer = u_int32_t;
 using Consumer = Producer;
-using Weight = u_int32_t;
+using Weight = double;
 
 using Edge = std::tuple<Producer, Consumer, Weight>;
 using Match = Edge;
@@ -33,18 +33,23 @@ u_long nrConsumers;
 u_long nrEdges;
 u_long graph_size;
 
-int readMetaData() {
+int readMetaData(std::string filelocation) {
 
-  std::string filename = "graphs/graph0.txt";
+  std::string filename = filelocation + "0.txt";
   std::ifstream chunk_stream(filename);
   std::string line;
 
   if (!chunk_stream.is_open()) {
-    std::cout << "error: couldn't read graph0.txt file";
+    std::cout << "error: couldn't read *0.txt file\n";
     return 1;
   }
 
-  getline(chunk_stream, line, '\n');
+  // discard comments
+  while (getline(chunk_stream, line, '\n')) {
+    if (line[0] != '%') {
+      break;
+    }
+  }
   std::istringstream input;
   input.str(line);
 
@@ -61,11 +66,12 @@ int readMetaData() {
   graph_size = nrProducers + nrConsumers;
 
   getline(chunk_stream, line, '\n');
-  input.str(line);
+  std::istringstream line2;
+  line2.str(line);
 
   std::string sProducer, sConsumer;
-  getline(input, sProducer, ' ');
-  getline(input, sConsumer, ' ');
+  getline(line2, sProducer, ' ');
+  getline(line2, sConsumer, ' ');
 
   // determine whether row 1 or 2 is the sorted row
   auto firstProducer = static_cast<Producer>(stoul(sProducer));
@@ -93,25 +99,32 @@ Match matchNeighborhood(Neighborhood *neighborhood,
   for (Edge edge : *neighborhood) {
     currentConsumer = std::get<1>(edge);
     currentWeight = std::get<2>(edge);
-
+    // if (availability->find(producer) != availability->end()) {
+    // continue;
+    // }
     if (availability->find(currentConsumer) != availability->end()) {
+      continue;
     }
     if (highestWeight < currentWeight) {
       highestWeight = currentWeight;
       bestConsumer = currentConsumer;
     }
   }
-
+  if (producer != 0 && 0 != bestConsumer) {
+    availability->insert(bestConsumer);
+    // availability->insert(producer);
+  }
   return std::make_tuple(producer, bestConsumer, highestWeight);
 }
 
 int readChunk(u_int32_t chunkToRead, Neighborhood *neighborhood,
-              MatchVec *matches, Availability *availability) {
-  std::string filename = "graphs/graph" + std::to_string(chunkToRead) + ".txt";
+              MatchVec *matches, Availability *availability,
+              std::string filelocation) {
+  std::string filename = filelocation + std::to_string(chunkToRead) + ".txt";
   std::ifstream chunk_stream(filename);
 
   if (!chunk_stream.is_open()) {
-    std::cout << "error: reading file graphs/graph" << chunkToRead << ".txt";
+    // std::cout << "error: reading file *" << chunkToRead << ".txt\n";
     return 1;
   }
 
@@ -122,12 +135,21 @@ int readChunk(u_int32_t chunkToRead, Neighborhood *neighborhood,
   std::stringstream sLine("");
   u_int32_t lastProducer = 0;
 
+  // discard comments
+  while (getline(chunk_stream, line, '\n')) {
+    if (line[0] != '%') {
+      break;
+    }
+  }
+
   // discard metadata
   if (chunkToRead == 0) {
     getline(chunk_stream, line);
   }
 
   while (getline(chunk_stream, line)) {
+
+    std::stringstream sLine;
     sLine.str(line);
     std::string sProducer, sConsumer, sWeight;
 
@@ -138,7 +160,7 @@ int readChunk(u_int32_t chunkToRead, Neighborhood *neighborhood,
 
     producer = static_cast<u_int32_t>(stoul(sProducer));
     consumer = static_cast<u_int32_t>(stoul(sConsumer));
-    weight = static_cast<u_int32_t>(stoul(sWeight));
+    weight = std::stod(sWeight);
 
     // swaps the producer and consumer in case the consumers are sequential
     // instead of the producers
@@ -167,18 +189,27 @@ int readChunk(u_int32_t chunkToRead, Neighborhood *neighborhood,
   return 0;
 }
 
-int main() {
+int main(int argc, char **argv) {
   std::cout.imbue(std::locale("en_US.UTF-8")); // Use thousands separator
   auto start = std::chrono::high_resolution_clock::now();
   u_int32_t chunkNumber = 0;
   Neighborhood neighborhood;
   MatchVec matches;
   Availability availability;
+  std::string filelocation = "graphs/graph";
+  if (argc > 0) {
+    filelocation = argv[1];
+  }
+
+  if (readMetaData(filelocation) == 1) {
+    return 1;
+  }
 
   while (true) {
     std::cout << "Reading chunk number: " << chunkNumber << "\t\r"
               << std::flush;
-    if (readChunk(chunkNumber, &neighborhood, &matches, &availability) == 0) {
+    if (readChunk(chunkNumber, &neighborhood, &matches, &availability,
+                  filelocation) == 1) {
       break;
     }
     chunkNumber++;
