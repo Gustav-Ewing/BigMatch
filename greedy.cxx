@@ -34,13 +34,11 @@ u_long nrEdges;
 u_long graph_size;
 
 int readMetaData(std::string filelocation) {
-
-  std::string filename = filelocation + "0.txt";
-  std::ifstream chunk_stream(filename);
+  std::ifstream chunk_stream(filelocation);
   std::string line;
 
   if (!chunk_stream.is_open()) {
-    std::cout << "error: couldn't read *0.txt file\n";
+    std::cout << "error: couldn't read" << filelocation << "file\n";
     return 1;
   }
 
@@ -110,17 +108,29 @@ Match matchNeighborhood(Neighborhood *neighborhood,
       bestConsumer = currentConsumer;
     }
   }
-  if (producer != 0 && 0 != bestConsumer) {
-    availability->insert(bestConsumer);
-    // availability->insert(producer);
+  // need to double check this to make sure it is right
+  if (producer == 0 || 0 == bestConsumer) {
+    return std::make_tuple(0, 0, 0);
   }
+  availability->insert(bestConsumer);
+  availability->insert(producer);
   return std::make_tuple(producer, bestConsumer, highestWeight);
 }
 
 int readChunk(u_int32_t chunkToRead, Neighborhood *neighborhood,
               MatchVec *matches, Availability *availability,
-              std::string filelocation) {
-  std::string filename = filelocation + std::to_string(chunkToRead) + ".txt";
+              std::string filelocation, bool externalGraph) {
+  std::string filename;
+  if (!externalGraph) {
+    filename = "graphs/graph" + std::to_string(chunkToRead) + ".txt";
+
+    // external graphs are not chunked as far as I have seen
+  } else if (chunkToRead == 0) {
+    filename = filelocation;
+  } else { // this else is a measureable slowdown on small graphs actually
+    return 1;
+  }
+
   std::ifstream chunk_stream(filename);
 
   if (!chunk_stream.is_open()) {
@@ -196,12 +206,15 @@ int main(int argc, char **argv) {
   Neighborhood neighborhood;
   MatchVec matches;
   Availability availability;
-  std::string filelocation = "graphs/graph";
+  std::string filelocation = "graphs/graph0.txt";
+  bool externalGraph = false;
   if (argc > 0) {
     filelocation = argv[1];
+    externalGraph = true;
   }
 
   if (readMetaData(filelocation) == 1) {
+    std::cout << "error: basefile couldnt be read" << "\n";
     return 1;
   }
 
@@ -209,7 +222,7 @@ int main(int argc, char **argv) {
     std::cout << "Reading chunk number: " << chunkNumber << "\t\r"
               << std::flush;
     if (readChunk(chunkNumber, &neighborhood, &matches, &availability,
-                  filelocation) == 1) {
+                  filelocation, externalGraph) == 1) {
       break;
     }
     chunkNumber++;
@@ -226,5 +239,12 @@ int main(int argc, char **argv) {
   const std::chrono::duration<double> elapsed_seconds{stop - start};
   std::cout << "\nExecution time: " << elapsed_seconds.count() << " seconds"
             << '\n';
+  if (sequential) {
+
+    std::cout << "Graph is sequential" << "\n";
+  } else {
+
+    std::cout << "Graph is not sequential " << "\n";
+  }
   return 0;
 }
