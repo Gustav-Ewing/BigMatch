@@ -100,6 +100,9 @@ Match matchNeighborhood(Neighborhood *neighborhood,
     // if (availability->find(producer) != availability->end()) {
     // continue;
     // }
+    if (availability->find(producer) != availability->end()) {
+      continue;
+    }
     if (availability->find(currentConsumer) != availability->end()) {
       continue;
     }
